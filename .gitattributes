@@ -1,0 +1,8 @@
+# Scripts and sources are consumed by bash/gcc inside Linux (WSL, Jetson).
+# Never let a Windows checkout rewrite them to CRLF: bash fails on the stray \r
+# with errors that point at the wrong line.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.mp4 binary

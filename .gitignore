@@ -1,0 +1,29 @@
+# C++ / CMake
+build/
+*.o
+*.so
+compile_commands.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime output
+mavlink/logs/*.csv
+mavlink/logs/*.jsonl
+video/results/*.log
+*.mp4
+*.mkv
+
+# Keep the demo clip and committed results
+!docs/assets/demo.mp4
+!video/results/latency.md
+!video/results/packet-loss.md
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

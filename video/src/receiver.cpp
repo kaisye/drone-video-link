@@ -1,0 +1,269 @@
+// Ground-station receiver: RTP/UDP -> H.264 -> raw frames handed to application code.
+//
+// The point of this file is the appsink boundary. Everything upstream of it is a
+// GStreamer pipeline that gst-launch could also run; everything downstream is ours.
+// On a real ground station this is where frames would go to a display, a recorder,
+// or a TensorRT inference engine.
+
+#include <gst/gst.h>
+#include <gst/app/gstappsink.h>
+#include <glib-unix.h>
+
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+
+namespace {
+
+struct Options {
+    int  port           = 5000;
+    int  jitter_latency = 0;      // ms; 0 = hand packets on immediately
+    bool sync           = false;  // false = render on arrival, ignore PTS
+    bool verbose        = false;  // print one line per frame
+};
+
+struct Stats {
+    std::atomic<guint64> frames{0};
+    std::atomic<guint64> bytes{0};
+    std::atomic<guint64> discontinuities{0};
+
+    // Written only from the streaming thread, read from the main-loop timer.
+    // A torn read costs us a wrong digit in a log line, nothing more.
+    gint     width  = 0;
+    gint     height = 0;
+    gint     fps_n  = 0;
+    gint     fps_d  = 1;
+    GstClockTime first_pts = GST_CLOCK_TIME_NONE;
+    GstClockTime last_pts  = GST_CLOCK_TIME_NONE;
+
+    guint64 frames_at_last_tick = 0;
+    gint64  wall_start_us       = 0;
+};
+
+struct Context {
+    Options   opts;
+    Stats     stats;
+    GMainLoop *loop = nullptr;
+};
+
+void read_caps_once(Context *ctx, GstSample *sample) {
+    if (ctx->stats.width != 0) return;
+
+    GstCaps *caps = gst_sample_get_caps(sample);
+    if (!caps) return;
+
+    const GstStructure *s = gst_caps_get_structure(caps, 0);
+    gst_structure_get_int(s, "width", &ctx->stats.width);
+    gst_structure_get_int(s, "height", &ctx->stats.height);
+    gst_structure_get_fraction(s, "framerate", &ctx->stats.fps_n, &ctx->stats.fps_d);
+
+    g_print("[caps] %dx%d @ %d/%d fps, format=%s\n",
+            ctx->stats.width, ctx->stats.height,
+            ctx->stats.fps_n, ctx->stats.fps_d,
+            gst_structure_get_string(s, "format"));
+}
+
+// Runs on the streaming thread, once per decoded frame.
+GstFlowReturn on_new_sample(GstAppSink *appsink, gpointer user_data) {
+    auto *ctx = static_cast<Context *>(user_data);
+
+    GstSample *sample = gst_app_sink_pull_sample(appsink);
+    if (!sample) return GST_FLOW_EOS;
+
+    read_caps_once(ctx, sample);
+
+    GstBuffer *buf = gst_sample_get_buffer(sample);  // borrowed, do not unref
+    if (buf) {
+        GstMapInfo map;
+        if (gst_buffer_map(buf, &map, GST_MAP_READ)) {
+            ctx->stats.bytes += map.size;
+            // Real work on the frame would happen here, on map.data.
+            gst_buffer_unmap(buf, &map);
+        }
+
+        const GstClockTime pts = GST_BUFFER_PTS(buf);
+        if (GST_CLOCK_TIME_IS_VALID(pts)) {
+            if (!GST_CLOCK_TIME_IS_VALID(ctx->stats.first_pts))
+                ctx->stats.first_pts = pts;
+            ctx->stats.last_pts = pts;
+        }
+
+        const guint64 n = ++ctx->stats.frames;
+
+        // The decoder sets DISCONT when the stream it received was not contiguous --
+        // the direct fingerprint of dropped RTP packets during the netem experiment.
+        // The very first buffer always carries it (a stream starts discontinuous),
+        // so counting it would put the loss-free baseline at 1 instead of 0.
+        if (n > 1 && GST_BUFFER_FLAG_IS_SET(buf, GST_BUFFER_FLAG_DISCONT))
+            ctx->stats.discontinuities++;
+        if (ctx->opts.verbose) {
+            g_print("[frame %6" G_GUINT64_FORMAT "] %dx%d  pts=%" GST_TIME_FORMAT "  size=%zu\n",
+                    n, ctx->stats.width, ctx->stats.height,
+                    GST_TIME_ARGS(pts), gst_buffer_get_size(buf));
+        }
+    }
+
+    // pull_sample returns a reference. Forgetting this unref is the classic
+    // GStreamer leak: RSS climbs steadily until the OOM killer intervenes.
+    gst_sample_unref(sample);
+    return GST_FLOW_OK;
+}
+
+gboolean on_stats_tick(gpointer user_data) {
+    auto *ctx = static_cast<Context *>(user_data);
+
+    const guint64 total = ctx->stats.frames.load();
+    const guint64 delta = total - ctx->stats.frames_at_last_tick;
+    ctx->stats.frames_at_last_tick = total;
+
+    const gint64 elapsed_us = g_get_monotonic_time() - ctx->stats.wall_start_us;
+    const double avg_fps = elapsed_us > 0 ? total * 1e6 / elapsed_us : 0.0;
+
+    g_print("[stats] frames=%" G_GUINT64_FORMAT "  fps=%" G_GUINT64_FORMAT
+            "  avg=%.2f  discont=%" G_GUINT64_FORMAT "  last_pts=%" GST_TIME_FORMAT "\n",
+            total, delta, avg_fps, ctx->stats.discontinuities.load(),
+            GST_TIME_ARGS(ctx->stats.last_pts));
+
+    return G_SOURCE_CONTINUE;
+}
+
+gboolean on_bus_message(GstBus *, GstMessage *msg, gpointer user_data) {
+    auto *ctx = static_cast<Context *>(user_data);
+
+    switch (GST_MESSAGE_TYPE(msg)) {
+    case GST_MESSAGE_ERROR: {
+        GError *err = nullptr;
+        gchar  *dbg = nullptr;
+        gst_message_parse_error(msg, &err, &dbg);
+        g_printerr("[error] from %s: %s\n", GST_OBJECT_NAME(msg->src), err->message);
+        if (dbg) g_printerr("[debug] %s\n", dbg);
+        g_clear_error(&err);
+        g_free(dbg);
+        g_main_loop_quit(ctx->loop);
+        break;
+    }
+    case GST_MESSAGE_WARNING: {
+        GError *err = nullptr;
+        gchar  *dbg = nullptr;
+        gst_message_parse_warning(msg, &err, &dbg);
+        g_printerr("[warn ] from %s: %s\n", GST_OBJECT_NAME(msg->src), err->message);
+        g_clear_error(&err);
+        g_free(dbg);
+        break;
+    }
+    case GST_MESSAGE_EOS:
+        g_print("[eos  ] end of stream\n");
+        g_main_loop_quit(ctx->loop);
+        break;
+    default:
+        break;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+gboolean on_sigint(gpointer user_data) {
+    auto *ctx = static_cast<Context *>(user_data);
+    g_print("\n[sigint] shutting down\n");
+    g_main_loop_quit(ctx->loop);
+    return G_SOURCE_REMOVE;
+}
+
+void print_usage(const char *argv0) {
+    g_print("usage: %s [--port N] [--jitter-latency MS] [--sync] [--verbose]\n\n"
+            "  --port N            UDP port to listen on            (default 5000)\n"
+            "  --jitter-latency MS rtpjitterbuffer depth            (default 0)\n"
+            "  --sync              honour buffer PTS at the sink    (default off)\n"
+            "  --verbose           print one line per frame\n",
+            argv0);
+}
+
+bool parse_args(int argc, char **argv, Options *o) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        auto next_int = [&](int *dst) {
+            if (i + 1 >= argc) return false;
+            *dst = std::atoi(argv[++i]);
+            return true;
+        };
+        if (a == "--port") { if (!next_int(&o->port)) return false; }
+        else if (a == "--jitter-latency") { if (!next_int(&o->jitter_latency)) return false; }
+        else if (a == "--sync") { o->sync = true; }
+        else if (a == "--verbose" || a == "-v") { o->verbose = true; }
+        else if (a == "--help" || a == "-h") { print_usage(argv[0]); std::exit(0); }
+        else { g_printerr("unknown argument: %s\n", a.c_str()); return false; }
+    }
+    return true;
+}
+
+}  // namespace
+
+int main(int argc, char **argv) {
+    gst_init(&argc, &argv);
+
+    Context ctx;
+    if (!parse_args(argc, argv, &ctx.opts)) {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    // udpsrc cannot negotiate caps: an RTP header names a payload type number, not a
+    // format. Sender and receiver agree on 96 out of band -- SDP does this in production.
+    gchar *desc = g_strdup_printf(
+        "udpsrc port=%d caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! "
+        "rtpjitterbuffer latency=%d ! "
+        "rtph264depay ! "
+        "avdec_h264 ! "
+        "videoconvert ! video/x-raw,format=I420 ! "
+        "appsink name=sink sync=%s max-buffers=2 drop=true",
+        ctx.opts.port, ctx.opts.jitter_latency, ctx.opts.sync ? "true" : "false");
+
+    GError *err = nullptr;
+    GstElement *pipeline = gst_parse_launch(desc, &err);
+    g_free(desc);
+    if (!pipeline) {
+        g_printerr("failed to build pipeline: %s\n", err ? err->message : "unknown");
+        g_clear_error(&err);
+        return 1;
+    }
+
+    GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "sink");
+    GstAppSinkCallbacks callbacks = {};
+    callbacks.new_sample = on_new_sample;
+    gst_app_sink_set_callbacks(GST_APP_SINK(sink), &callbacks, &ctx, nullptr);
+
+    ctx.loop = g_main_loop_new(nullptr, FALSE);
+
+    GstBus *bus = gst_element_get_bus(pipeline);
+    gst_bus_add_watch(bus, on_bus_message, &ctx);
+
+    g_unix_signal_add(SIGINT, on_sigint, &ctx);
+    ctx.stats.wall_start_us = g_get_monotonic_time();
+    g_timeout_add_seconds(1, on_stats_tick, &ctx);
+
+    if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+        g_printerr("failed to start pipeline\n");
+        return 1;
+    }
+
+    g_print("receiver: listening on udp/%d  jitter=%dms  sync=%s\n",
+            ctx.opts.port, ctx.opts.jitter_latency, ctx.opts.sync ? "on" : "off");
+
+    g_main_loop_run(ctx.loop);
+
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+
+    const guint64 frames = ctx.stats.frames.load();
+    const gint64  us     = g_get_monotonic_time() - ctx.stats.wall_start_us;
+    g_print("\n[summary] frames=%" G_GUINT64_FORMAT "  bytes=%" G_GUINT64_FORMAT
+            "  discont=%" G_GUINT64_FORMAT "  elapsed=%.1fs  avg_fps=%.2f\n",
+            frames, ctx.stats.bytes.load(), ctx.stats.discontinuities.load(),
+            us / 1e6, us > 0 ? frames * 1e6 / us : 0.0);
+
+    gst_object_unref(bus);
+    gst_object_unref(sink);
+    gst_object_unref(pipeline);
+    g_main_loop_unref(ctx.loop);
+    return 0;
+}
