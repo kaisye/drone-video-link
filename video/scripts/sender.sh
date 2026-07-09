@@ -14,13 +14,15 @@ PROFILE="${PROFILE:-tuned}"
 
 case "$PROFILE" in
   tuned)
-    # tune=zerolatency disables B-frames and lookahead: the encoder never waits
-    # for a future frame before emitting the current one.
+    # tune=zerolatency sets rc-lookahead=0 and switches to sliced threads. It is
+    # not about B-frames: x264enc already defaults to bframes=0. Measured effect
+    # is 2067 ms -> 4.2 ms of encoder latency (results/latency.md).
     ENC="x264enc tune=zerolatency speed-preset=ultrafast bitrate=${BITRATE} key-int-max=${KEY_INT_MAX}"
     ;;
   default)
-    # x264enc defaults. B-frames and lookahead are on, so the encoder buffers
-    # several frames before output. This is the baseline row of the latency table.
+    # x264enc defaults: 40 frames of rate-control lookahead plus one frame held
+    # per encoder thread. Roughly two seconds of delay on a 16-core host. This is
+    # the baseline row of the latency table, not something anyone would ship.
     ENC="x264enc bitrate=${BITRATE}"
     ;;
   *)

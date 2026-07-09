@@ -10,7 +10,7 @@
        │
  [videoconvert]        đổi color format cho khớp encoder
        │
- [x264enc]             nén H.264. tune=zerolatency → không B-frame
+ [x264enc]             nén H.264. tune=zerolatency → lookahead=0 + sliced threads
        │  H.264 elementary stream
        ▼
  [rtph264pay]          cắt thành RTP packet, thêm seq number + timestamp

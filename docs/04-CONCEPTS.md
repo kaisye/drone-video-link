@@ -39,11 +39,14 @@ Nguồn video giả lập. `pattern=smpte` cho ra sọc màu, `pattern=ball` cho
 
 H.264 encoder phần mềm. Ba tham số cần hiểu:
 
-**`tune=zerolatency`** — tắt hai thứ:
-- **B-frame** (bi-directional frame). B-frame nén rất tốt vì nó tham chiếu *cả frame trước lẫn frame sau*. Nhưng để mã hoá nó, encoder phải **chờ frame tương lai đến** → tự động thêm độ trễ bằng vài frame. Với video call/drone, đây là thứ đầu tiên phải tắt.
-- **Lookahead** — encoder nhìn trước N frame để phân bổ bitrate thông minh. Cũng cần chờ → cũng phải tắt.
+**`tune=zerolatency`** — tắt hai thứ, và **không phải B-frame** như hầu hết bài viết trên mạng nói:
 
-**`speed-preset=ultrafast`** — đổi chất lượng nén lấy tốc độ CPU. Encode nhanh hơn = latency thấp hơn = file to hơn.
+- **Lookahead** (`rc-lookahead`, mặc định 40). Encoder giữ lại 40 frame để bộ điều khiển bitrate nhìn trước xem cảnh sắp tới phức tạp cỡ nào, rồi mới quyết định tiêu bao nhiêu bit cho frame hiện tại. Cái giá là **đúng 40 frame độ trễ** — đo được 39,4 frame khi ép `threads=1`.
+- **Frame-based multithreading.** Mỗi luồng encode một frame khác nhau cùng lúc, nên frame *N* chưa ra được cho tới khi luồng giữ nó xong việc, trong khi *N+1…N+k* đã vào guồng. Đo được: 4 luồng → 10 frame trễ, 8 luồng → 14, auto trên 16 lõi → 28. `tune=zerolatency` chuyển sang **sliced threads** — chia *một* frame cho nhiều luồng thay vì phát mỗi luồng một frame. Thông lượng thấp hơn, độ trễ biến mất.
+
+> **Vì sao không phải B-frame?** Vì `x264enc` của GStreamer mặc định `bframes=0` — tự kiểm bằng `gst-inspect-1.0 x264enc | grep -A2 '^  bframes'`. Không có B-frame nào để mà tắt. Đây là chỗ dễ trả lời sai trong phỏng vấn vì lời giải thích "B-frame phải chờ frame tương lai" nghe rất hợp lý, và nó đúng với x264 dòng lệnh, chỉ sai với element này. Số liệu ở [`../video/results/latency.md`](../video/results/latency.md).
+
+**`speed-preset=ultrafast`** — đổi chất lượng nén lấy tốc độ CPU. Lưu ý preset này *có* đặt `rc-lookahead=0`, nhưng **không** đụng tới frame threading: một mình nó chỉ hạ độ trễ encoder từ 2067 ms xuống 734 ms, còn cách 4,2 ms rất xa.
 
 **`key-int-max=30`** — cứ tối đa 30 frame thì chèn một keyframe. Ở 30fps nghĩa là **1 giây một keyframe**. Xem A7 để hiểu vì sao con số này quyết định video vỡ bao lâu khi mất gói.
 

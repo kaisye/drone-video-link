@@ -15,8 +15,14 @@
 **Q: `rtpjitterbuffer latency` em đặt bao nhiêu, vì sao?**
 > Em đặt 0. Nó là đánh đổi trực tiếp giữa độ trễ và độ mượt: buffer 200ms mặc định cộng thẳng 200ms vào latency, đổi lại chịu được jitter. Với FPV drone, người lái cần phản hồi tức thì nên chọn 0 và chấp nhận giật khi mạng xấu. Netflix thì chọn ngược lại, buffer vài giây.
 
-**Q: `tune=zerolatency` thực chất tắt cái gì?**
-> Chủ yếu là B-frame và lookahead. B-frame tham chiếu cả frame trước lẫn frame sau, nên encoder phải chờ frame tương lai — tự động thêm độ trễ vài frame. Lookahead cũng phải chờ. Tắt cả hai thì nén kém hơn nhưng không phải chờ frame nào.
+**Q: ★ `tune=zerolatency` thực chất tắt cái gì?**
+> Câu trả lời phổ biến là "tắt B-frame", nhưng với `x264enc` của GStreamer thì sai: element này mặc định `bframes=0`, không có B-frame nào để tắt. Em có đo. Nó tắt hai thứ khác: `rc-lookahead` (mặc định 40 frame — encoder giữ 40 frame để rate control nhìn trước, tốn đúng 40 frame độ trễ), và **frame-based multithreading** (mỗi luồng ôm một frame, nên trễ thêm khoảng một frame cho mỗi luồng — em đo được 28 frame trên máy 16 lõi). `zerolatency` đặt lookahead về 0 và chuyển sang sliced threads. Latency encoder xuống từ 2067 ms còn 4,2 ms.
+
+**Q: Vậy `speed-preset=ultrafast` có đủ không?**
+> Không. Preset đó có đặt `rc-lookahead=0`, nhưng không đụng tới frame threading — một mình nó chỉ xuống được 734 ms. Phải có `tune=zerolatency` mới hết phần threading.
+
+**Q: Em làm sao biết B-frame không phải thủ phạm?**
+> Em ép `threads=1` rồi đo riêng từng nút. Với `rc-lookahead=40` thì trễ đúng 39,4 frame; hạ lookahead về 0 thì còn 3,6 frame. Rồi giữ lookahead=0 và tăng số luồng: 4 luồng ra 10 frame, 8 luồng ra 14. Hai nguồn trễ tách bạch, cộng lại đúng bằng tổng đo được. Nếu B-frame có phần trong đó thì các con số này không khớp.
 
 **Q: ★ Mất một gói UDP thì hình hỏng bao lâu?**
 > Không phải một frame — mà đến tận keyframe tiếp theo. P-frame chỉ lưu phần khác biệt so với frame trước, nên khi một frame sai, mọi P-frame sau nó thừa kế lỗi và lỗi tích luỹ dần. Chỉ khi I-frame kế tiếp đến, hình mới hồi phục hoàn toàn. Em đặt `key-int-max=30` ở 30fps, nên tệ nhất là khoảng một giây. Em có screenshot thí nghiệm này, chạy `tc netem` với 2% packet loss.
@@ -28,7 +34,10 @@
 > `GST_TRACERS="latency(flags=pipeline+element)"` — nó cho latency tổng và latency từng element, nên em biết ai là thủ phạm. Em có bảng so sánh 4 cấu hình trong `results/latency.md`, mỗi dòng kèm giải thích vì sao con số giảm.
 
 **Q: Thay đổi nào giảm latency nhiều nhất?**
-> `sync=false` ở sink. Mặc định sink chờ đến đúng PTS mới hiển thị để khớp với audio. Livestream không có audio nên việc chờ đó là độ trễ thuần tuý vô ích. Một dòng, hiệu quả lớn nhất.
+> Encoder, không phải chuyện gì gần mạng cả. Tổng đường ống đi từ 2288 ms xuống 7,8 ms, trong đó riêng `tune=zerolatency` gánh 2064 ms. Jitter buffer bớt 200 ms, `sync=false` bớt 15 ms. Em từng đoán `sync=false` mới là lớn nhất — đo xong mới biết mình sai một trăm lần về độ lớn.
+
+**Q: ★ `sync=false` bớt có 15 ms, sao vẫn đáng làm?**
+> Vì chỗ nó hiện ra không phải chỗ nó gây hại. Khi `sync=true`, sink giữ mỗi buffer tới đúng PTS mới nhả. Sink nghẽn thì các element phía trên dồn ứ lại phía sau nó — và trace cho thấy đống buffer đó nằm trong **jitter buffer**: đóng góp của jitter buffer rơi từ 15,5 ms xuống 0,8 ms khi em tắt sync. Element báo triệu chứng không phải element có bệnh. Đây là bài học em nhớ nhất từ project này.
 
 **Q: Em dùng `gst-launch` hay tự viết app?**
 > Em dùng `gst-launch` để dựng và hiểu pipeline trước, rồi viết receiver bằng C++ với GStreamer C API, lấy frame qua `appsink`, build bằng CMake. Code ở `video/src/receiver.cpp`.
