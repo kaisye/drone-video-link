@@ -1,0 +1,13 @@
+# Gateway runtime dependencies.
+#
+# pymavlink is the reference Python MAVLink implementation, maintained by the
+# ArduPilot project itself. It generates the message classes from the same XML
+# dialect definitions the flight controller was built from.
+pymavlink>=2.4.37
+
+# MAVProxy is not imported by the gateway. It is what ArduPilot's sim_vehicle.py
+# uses to fan the SITL link out to UDP 14550, so it is needed to run the sim.
+MAVProxy>=1.8.60
+
+# T2.5 only. The gateway degrades to a warning if this is missing.
+paho-mqtt>=1.6.1
