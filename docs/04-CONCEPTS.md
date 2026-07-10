@@ -60,9 +60,11 @@ H.264 encoder phần mềm. Ba tham số cần hiểu:
 
 > **I-frame to hơn P-frame bao nhiêu lần?** "Cả chục lần" là phát biểu về *nội
 > dung*, không phải về H.264. Cùng một encoder, cùng bitrate, em đo bằng
-> `scripts/gop-stats.sh`: ảnh tĩnh SMPTE **2,8×**, quả bóng trên nền đen **3,2×**,
-> chong chóng quay kín khung **15,0×**. Con số này không phải chi tiết vụn vặt —
-> nó quyết định thiệt hại khi mất gói, xem A7.
+> `scripts/gop-stats.sh`: thanh màu SMPTE **2,8×**, quả bóng trên nền đen **3,2×**,
+> zone-plate động **8,4×**, pinwheel **15,0×**. Tỉ số càng lớn thì ảnh càng ít
+> chuyển động: pinwheel hoá ra **đứng yên hoàn toàn** (0,0% pixel đổi giữa hai
+> frame liên tiếp), nên P-frame của nó gần như rỗng. Con số này không phải chi
+> tiết vụn vặt — nó quyết định thiệt hại khi mất gói, xem A7.
 
 Một chi tiết ít được nhắc: `tune=zerolatency` bật **sliced threads**, nên mỗi
 picture bị cắt thành nhiều slice — em đo được **11 slice/picture** — và mỗi slice
@@ -89,9 +91,11 @@ Cơ chế, với GOP 30 frame (I-frame ở #0 và #30):
 3. Frame #7 tham chiếu #6 → sai tiếp. Lỗi **lan truyền**.
 4. Đến frame #30 — một I-frame mới, mã hoá không tham chiếu ai → hình **hồi phục hoàn toàn**.
 
-Em đo được điều này chứ không suy luận. So từng pixel với luồng gốc: **10/10 đợt
-hỏng kết thúc đúng tại một keyframe**, không sớm hơn cũng không muộn hơn một
-frame. Và sai lệch **không hề phai dần** — nó phẳng lì suốt cả GOP rồi biến mất:
+Em đo được điều này chứ không suy luận. So từng pixel với luồng gốc: **29/29 đợt
+hỏng (bốn ảnh thử khác nhau) kết thúc đúng tại một keyframe**, không sớm hơn cũng
+không muộn hơn một frame. Và khi bỏ hẳn netem đi — tự chọn gói để xoá thay vì để
+netem bắn ngẫu nhiên — thì là **36/36**. Sai lệch **không hề phai dần**: nó phẳng
+lì suốt cả GOP rồi biến mất:
 
 ```
 frame 12..29 : mean abs diff = 22,6   (phẳng, không giảm)
@@ -107,6 +111,31 @@ P-frame). Trúng một gói của keyframe là mất trọn 30 frame. Tính theo
 thật: **17,6 frame**, không phải 15,5. Đo thực tế còn cao hơn — trung bình **24,1
 frame ≈ 803 ms** cho mỗi GOP bị trúng, vì ở tỉ lệ mất gói thật thì một GOP hỏng
 thường trúng nhiều hơn một lần.
+
+### Mất gói của keyframe có tệ hơn mất gói của P-frame không?
+
+Có, **5,8 lần** — nhưng không phải vì lý do người ta hay nói. `scripts/idr-vs-p.sh`
+xoá **đúng một slice NAL** khỏi bitstream đã đóng băng rồi giải mã (mất bất kỳ gói
+RTP nào của một NAL là mất cả NAL, vì `rtph264depay` vứt NAL không đủ gói). Không
+có gì ngẫu nhiên: 11 slice của picture 30 (một IDR) và 11 slice của picture 15
+(một P), xoá lần lượt từng cái.
+
+| nạn nhân | số frame hỏng | sai lệch ngay tại frame trúng | frame tệ nhất |
+|---|---|---|---|
+| một slice của IDR (picture 30) | `30..59`, lần nào cũng vậy | **10,69** | 24,31 |
+| một slice của P (picture 15) | `15..29`, lần nào cũng vậy | **1,85** | 2,65 |
+
+Hai điều rút ra, và cả hai đều ngược với trực giác:
+
+1. **Thời gian hỏng không phụ thuộc loại frame.** Nó chỉ là *khoảng cách tới
+   keyframe kế tiếp*. IDR ở picture 30 tốn 30 frame vì nó cách keyframe sau đúng
+   một GOP; P ở picture 15 tốn 15 frame vì nó cách nửa GOP. Mất slice ở picture 29
+   thì chỉ hỏng **một** frame.
+2. **Biên độ mới phụ thuộc loại frame, và nó được quyết định ngay tại frame bị
+   trúng.** Đợt hỏng của IDR dài gấp đôi, nên rất dễ tưởng nó tệ hơn vì lỗi có
+   thêm thời gian tích luỹ. Không phải: sai lệch *trung vị tại frame trúng* đã là
+   10,69 so với 1,85 rồi, còn tích luỹ suốt phần GOP còn lại chỉ cộng thêm 3%.
+   Che một dải **intra** mới là việc khó — decoder không có gì để chép từ đó.
 
 **Hệ quả thiết kế:** giảm `key-int-max` → hồi phục nhanh hơn, nhưng tốn bitrate hơn (I-frame to). Đây là một đánh đổi thật mà kỹ sư video phải chọn hằng ngày.
 

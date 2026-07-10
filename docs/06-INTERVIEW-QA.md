@@ -28,13 +28,18 @@
 > Em ép `threads=1` rồi đo riêng từng nút. Với `rc-lookahead=40` thì trễ đúng 39,4 frame; hạ lookahead về 0 thì còn 3,6 frame. Rồi giữ lookahead=0 và tăng số luồng: 4 luồng ra 10 frame, 8 luồng ra 14. Hai nguồn trễ tách bạch, cộng lại đúng bằng tổng đo được. Nếu B-frame có phần trong đó thì các con số này không khớp.
 
 **Q: ★ Mất một gói UDP thì hình hỏng bao lâu?**
-> Đến tận keyframe tiếp theo, không phải một frame. P-frame chỉ lưu phần khác biệt so với frame trước, nên một frame sai là mọi P-frame sau nó sai theo. Em đo chứ không suy luận: so từng pixel với luồng gốc, **10 trên 10 đợt hỏng kết thúc đúng tại một keyframe**, không lệch một frame nào. Và sai lệch **không phai dần** — nó phẳng lì ở mức 22,6 (mean abs diff) suốt cả GOP rồi rơi về 0,3 đúng tại IDR, vì P-frame chép nguyên khối sai từ frame trước. `key-int-max=30` ở 30fps, nên tệ nhất là 1000 ms.
+> Đến tận keyframe tiếp theo, không phải một frame. P-frame chỉ lưu phần khác biệt so với frame trước, nên một frame sai là mọi P-frame sau nó sai theo. Em đo chứ không suy luận: so từng pixel với luồng gốc, **29 trên 29 đợt hỏng (bốn ảnh thử) kết thúc đúng tại một keyframe**, không lệch một frame nào. Rồi em bỏ hẳn netem đi để loại yếu tố may rủi — tự tay xoá lần lượt từng slice NAL rồi giải mã — và được **36 trên 36**. Sai lệch **không phai dần**: nó phẳng lì ở mức 22,6 (mean abs diff) suốt cả GOP rồi rơi về 0,3 đúng tại IDR, vì P-frame chép nguyên khối sai từ frame trước. `key-int-max=30` ở 30fps, nên tệ nhất là 1000 ms.
 
 **Q: Vậy trung bình mất một gói hỏng nửa GOP, tức 15 frame?**
 > Đó là câu trả lời sách vở và nó **sai**. Gói mất phân bố đều theo *gói*, không phải theo *frame*. Mà keyframe của luồng em to gấp 15 lần P-frame, chiếm **15% tổng số gói**. Trúng một gói của keyframe là mất trọn 30 frame. Tính lại theo phân bố gói thật thì kỳ vọng là 17,6 frame. Đo thực tế còn cao hơn, 24,1 frame mỗi GOP bị trúng — vì ở tỉ lệ mất gói thật, một GOP hỏng thường trúng nhiều hơn một lần và thiệt hại tính từ lần sớm nhất. Em có mô phỏng Monte Carlo trên đúng layout gói của luồng đó để kiểm tra: mô hình nói 61% GOP hỏng, đo được 55%.
 
+**Q: ★ Mất gói của keyframe có tệ hơn mất gói của P-frame không?**
+> Tệ hơn **5,8 lần**, và em đo được con số đó bằng cách không cho netem chọn nạn nhân. Netem không trả lời được câu này: keyframe chỉ chiếm 15% số gói, chạy 600 frame chỉ trúng keyframe một hai lần, hai lần chạy lệch nhau 60 lần — mẫu chính là kết quả. Nên em lấy bitstream đã đóng băng, **xoá đúng một slice NAL** rồi giải mã (mất bất kỳ gói RTP nào của một NAL là mất cả NAL, vì `rtph264depay` vứt NAL không đủ gói). 11 slice của một IDR và 11 slice của một P, xoá lần lượt. Không có gì ngẫu nhiên.
+>
+> Hai kết luận đều ngược trực giác. Thứ nhất, **thời gian hỏng không phụ thuộc loại frame** — nó chỉ là khoảng cách tới keyframe kế tiếp. IDR ở picture 30 hỏng 30 frame vì nó cách keyframe sau đúng một GOP, còn P ở picture 15 hỏng 15 frame vì cách nửa GOP. Thứ hai, **biên độ mới phụ thuộc loại frame, và nó được định đoạt ngay tại frame bị trúng**: sai lệch trung vị tại chính frame đó đã là 10,69 so với 1,85, còn lan truyền suốt phần GOP còn lại chỉ cộng thêm 3%. Che một dải *intra* mới là việc khó — decoder không có sẵn cái gì để chép vào chỗ trống.
+
 **Q: Vậy giảm `key-int-max` xuống là xong?**
-> Hồi phục nhanh hơn, nhưng bitrate tăng vì I-frame to. Cẩn thận chỗ này: "I-frame to gấp chục lần P-frame" là phát biểu về *nội dung*, không phải về H.264. Cùng encoder, cùng bitrate, em đo được 2,8× với ảnh tĩnh, 3,2× với vật thể nhỏ chuyển động, 15,0× với cảnh động kín khung. Muốn biết đánh đổi thật thì phải đo trên chính cảnh quay của mình.
+> Hồi phục nhanh hơn, nhưng bitrate tăng vì I-frame to. Cẩn thận chỗ này: "I-frame to gấp chục lần P-frame" là phát biểu về *nội dung*, không phải về H.264. Cùng encoder, cùng bitrate, em đo được 2,8× (thanh màu SMPTE), 3,2× (quả bóng trên nền đen), 8,4× (zone-plate động), 15,0× (pinwheel — ảnh đứng yên, nên P-frame gần như rỗng). Muốn biết đánh đổi thật thì phải đo trên chính cảnh quay của mình.
 
 **Q: ★ Ứng dụng của em có biết là đang mất gói không?**
 > Không, và đây là thứ em học được nhiều nhất. Em từng viết trong `receiver.cpp` rằng `GST_BUFFER_FLAG_DISCONT` là dấu vân tay của mất gói. Sai. Em quét từ 0% đến 20% packet loss: ở 20%, 474 gói không tới nơi, ứng dụng vẫn nhận 148/150 frame, `discont` = 0, `CORRUPTED` = 0. `avdec_h264` che lỗi trong im lặng và trả về một frame trông y như frame tốt. Muốn biết link đang xấu thì **phải đếm ở tầng RTP** — em đọc property `stats` của `rtpjitterbuffer`, lấy `num-lost`. Một cái đèn "video OK" dựa trên số frame sẽ báo xanh trong khi phi công đang nhìn màn hình vỡ nát.
@@ -79,7 +84,7 @@
 > Mọi node phát heartbeat ở 1Hz, mang flight mode và cờ armed. Quy ước là mất 3 nhịp liên tiếp — khoảng 3 giây — thì coi như đứt link và vehicle kích hoạt failsafe, thường là RTL. Gateway của em có watchdog theo đúng ngưỡng đó. Đây là logic an toàn bay, không phải chi tiết trang trí.
 
 **Q: Trình tự cất cánh của em thế nào?**
-> Set mode GUIDED, chờ EKF hội tụ và có GPS lock, arm bằng `MAV_CMD_COMPONENT_ARM_DISARM`, rồi `MAV_CMD_NAV_TAKEOFF` với độ cao ở param7. Sai thứ tự là FC từ chối.
+> Chờ GPS 3D fix + EKF origin trước, rồi set GUIDED, rồi arm bằng `MAV_CMD_COMPONENT_ARM_DISARM` (có retry vì pre-arm có thể từ chối tạm thời trong lúc EKF còn hội tụ), rồi `MAV_CMD_NAV_TAKEOFF` với độ cao ở param7. Thứ tự này em phải sửa lại sau khi test với SITL thật — xem câu về mock bên dưới. Sai thứ tự là FC từ chối.
 
 **Q: Vì sao phải GUIDED trước?**
 > Ở STABILIZE hay LOITER, FC nghe người lái cầm remote. GUIDED là mode nói "tôi nhận lệnh từ phần mềm". Arm khi chưa GUIDED, hoặc takeoff khi chưa arm, thì FC trả `MAV_RESULT_DENIED`.
@@ -88,7 +93,14 @@
 > Có, em đọc `COMMAND_ACK`. Bắn lệnh rồi cho là xong là sai — FC có pre-arm check và sẽ từ chối nếu EKF chưa sẵn sàng. Em phân biệt `ACCEPTED`, `TEMPORARILY_REJECTED` và `DENIED` để biết nên thử lại hay dừng.
 
 **Q: Em không có drone thật, vậy test kiểu gì?**
-> Em dùng ArduPilot SITL. Đó là chính firmware ArduPilot compile cho x86 thay vì ARM — chạy đủ EKF, controller, pre-arm check, mô phỏng vật lý. Giao thức, timing và hành vi từ chối lệnh đều thật. Kỹ sư drone dùng SITL để test hằng ngày, đây là quy trình chuẩn của ngành chứ không phải giải pháp chữa cháy.
+> Em dùng ArduPilot SITL. Đó là chính firmware ArduPilot compile cho x86 thay vì ARM — chạy đủ EKF, controller, pre-arm check, mô phỏng vật lý. Giao thức, timing và hành vi từ chối lệnh đều thật. Kỹ sư drone dùng SITL để test hằng ngày, đây là quy trình chuẩn của ngành chứ không phải giải pháp chữa cháy. `takeoff 10` chạy trên SITL thật: arm rồi leo tới đúng 10 m, lặp lại được.
+
+**Q: ★ Em cũng viết một mock FC. Vậy mock với SITL khác nhau ở đâu, và có đáng không?**
+> Đáng, và em có bằng chứng cụ thể. Ban đầu mạng chậm không build được SITL nên em viết `mock_fc.py` để phát triển gateway — nó trả lời lệnh và ép đúng luật thứ tự. Gateway chạy ngon với mock. Nhưng khi SITL build xong và em trỏ gateway sang, nó **hỏng ngay hai chỗ mà mock giấu kín**:
+>
+> Một, ArduPilot **không tự stream telemetry** — chỉ gửi heartbeat cho tới khi GCS gửi `REQUEST_DATA_STREAM`. Mock của em stream tất cả từ đầu, nên gateway chưa từng cần hỏi; với SITL thì mọi cột telemetry về null. Hai, **bit sức khoẻ sensor báo "khoẻ" vài giây trước khi thật sự arm được** — GPS phải có 3D fix và EKF phải set origin đã. Mock bật bit rồi accept arm luôn; SITL trả `FAILED` trong khoảng đó. Arm một phát là thua.
+>
+> Bài học em rút ra: **mock và gateway do cùng một người viết từ cùng một cách hiểu spec, nên một hiểu lầm sẽ lọt qua cả hai.** SITL là một implementation độc lập, nó bắt đúng những hiểu lầm đó. Em sửa: request stream khi connect, và chờ GPS fix rồi retry arm xuyên qua cửa sổ pre-arm. Đây là lý do em không tin một con số nào chỉ dựa trên mock.
 
 **Q: Bẫy nào em gặp khi parse telemetry?**
 > MAVLink gửi số nguyên đã scale để tiết kiệm băng thông. `lat`/`lon` là degE7 phải chia 1e7, `alt` là mm, `ATTITUDE.roll` là radian. Và `alt` là so với mực nước biển còn `relative_alt` mới là so với điểm cất cánh — muốn kiểm tra takeoff 10m phải nhìn `relative_alt`.
@@ -109,7 +121,7 @@
 > Cả hai đầu chạy trên loopback nên em không đo được latency của NIC thật, và không gặp MTU hay congestion. Em bù bằng `tc netem`, nhưng `netem loss X%` sinh lỗi **độc lập từng gói**, còn sóng vô tuyến thật mất gói theo **chùm**. Mất 20 gói liên tiếp phá hỏng cả một keyframe; mất 20 gói rải rác thì decoder che được gần hết. Mọi con số packet-loss của em đều nằm dưới giả định độc lập đó, và em nói rõ điều này ngay đầu `results/packet-loss.md`.
 
 **Q: Em có định lượng được sự khác biệt giữa hai kiểu mất gói không?**
-> Chưa đo, nhưng em biết cách: `netem` có `loss gemodel` (mô hình Gilbert-Elliott) để sinh lỗi theo chùm. Nếu có thêm thời gian đó là thí nghiệm tiếp theo, vì kết luận "15% số gói thuộc keyframe" gợi ý rằng chùm lỗi rơi trúng keyframe sẽ tệ hơn hẳn phân bố đều.
+> Chưa đo, nhưng em biết cách: `netem` có `loss gemodel` (mô hình Gilbert-Elliott) để sinh lỗi theo chùm. Nếu có thêm thời gian đó là thí nghiệm tiếp theo. Em có sẵn một nửa câu trả lời: một chùm lỗi rơi trúng keyframe gây sai lệch gấp 5,8 lần rơi trúng P-frame — đó là số đo, không phải suy đoán. Nửa còn lại chưa có: một chùm 20 gói liên tiếp còn phá hỏng nhiều slice của *nhiều* frame liền nhau, mà khi frame trước đã sai thì cơ chế che lỗi (chép từ frame trước) mất luôn chỗ dựa. Em chưa đo phần đó nên chưa dám nói.
 
 **Q: Nếu có thêm một tuần em làm gì tiếp?**
 > Ba việc, theo thứ tự: chạy trên Jetson thật để đo NVENC; đo glass-to-glass latency bằng camera quay màn hình thay vì chỉ đo pipeline latency; và làm phần chống rung bằng `vidstab` hoặc OpenCV vì đó là một trách nhiệm chính trong JD mà em mới chỉ demo bằng FFmpeg.
@@ -118,7 +130,16 @@
 > Rằng một bộ đếm chưa đối chiếu thì chưa phải số liệu. Ba lần trong project này em suýt báo cáo con số sai mà vẫn thấy hợp lý: `discont` bằng 0 vì em tưởng nó bắt được mất gói (thật ra nó không bao giờ bật); một cột latency của `fakesink` mà thật ra element đó không hề sinh bản ghi nào; và `num-lost` = 3640 trên một link chỉ mất 90 gói. Cả ba đều bị bắt bằng cách đo lại bằng dụng cụ thứ hai, độc lập. Bài học thứ hai: FPS và latency là hai chỉ số khác nhau — buffer sâu cho FPS đẹp trong khi latency thảm hoạ.
 
 **Q: Kể một lỗi thí nghiệm em tự phát hiện.**
-> Em muốn chụp ảnh so sánh "hình sạch" và "hình vỡ", nên chạy hai lần: một lần link sạch làm tham chiếu, một lần mất gói. So pixel thì **cả 300 frame đều khác nhau**, kể cả khi so hai lần chạy sạch với nhau. Hoá ra `x264enc` **không bit-reproducible**: cùng một input tất định, encode hai lần ra hai file khác nhau (em kiểm bằng `md5sum`). Vậy là em đang so hai bitstream khác nhau chứ không so hai điều kiện mạng. Cách sửa: encode **một lần** ra file, rồi phát lại đúng file đó qua RTP cho cả hai lần chạy. Sau đó control cho ra 600/600 frame trùng khít từng bit, và mọi sai khác còn lại chắc chắn là do mạng. Trước đó em còn dùng ảnh tĩnh SMPTE và không thấy hình vỡ ở đâu cả — vì decoder che lỗi bằng cách chép khối từ frame trước, mà với ảnh tĩnh thì khối đó *đúng*. Camera trên drone không bao giờ đứng yên, nên em đổi sang cảnh động.
+> Em muốn chụp ảnh so sánh "hình sạch" và "hình vỡ", nên chạy hai lần: một lần link sạch làm tham chiếu, một lần mất gói. So pixel thì **cả 300 frame đều khác nhau**, kể cả khi so hai lần chạy sạch với nhau. Hoá ra `x264enc` **không bit-reproducible**: cùng một input tất định, encode hai lần ra hai file khác nhau (em kiểm bằng `md5sum`). Vậy là em đang so hai bitstream khác nhau chứ không so hai điều kiện mạng. Cách sửa: encode **một lần** ra file, rồi phát lại đúng file đó qua RTP cho cả hai lần chạy. Sau đó control cho ra 600/600 frame trùng khít từng bit, và mọi sai khác còn lại chắc chắn là do mạng.
+
+**Q: ★ Còn lỗi nào em phát hiện muộn hơn không?**
+> Có, và nó tệ hơn. Lần đầu em dùng ảnh tĩnh SMPTE, không thấy hình vỡ đâu cả, nên em kết luận "ảnh tĩnh giấu hỏng hóc vì concealment chép khối từ frame trước, mà với ảnh tĩnh khối đó đúng", rồi *chạy lại với ảnh động* bằng `pattern=pinwheel`, và hình vỡ hiện ra. Trông y như một xác nhận.
+>
+> Ba ngày sau, lúc quay demo, em đo thử: **`pinwheel` đứng yên hoàn toàn** — 0,0% pixel thay đổi giữa hai frame liên tiếp. Nghĩa là em đã đổi từ ảnh tĩnh này sang ảnh tĩnh khác, kết quả vẫn đổi, còn "ảnh động" thì chưa bao giờ là biến số. Cái giả thuyết đúng-nghe-hợp-lý đó đã ngồi trong tài liệu một ngày chỉ vì nó *dự đoán đúng* cái em đã thấy.
+>
+> Đo lại tử tế trên 4 pattern, cùng một bitstream đóng băng, cùng 0,15% loss: **không pattern nào giấu được hỏng hóc** — pattern nào cũng sai 110–155 trên 600 picture. Cái bị giấu là **biên độ**: median sai lệch 0,01/255 với `pinwheel`, 4,22 với zone-plate động. Dụng cụ cũ của em là histogram kích thước file PNG — nó không thể thấy 0,34 trên 255. Ảnh về sai gần như mọi frame, mà nhìn thì hoàn hảo.
+>
+> Bài học: một dụng cụ mù và một ảnh thử sai *bảo kê lẫn nhau*. Đổi ảnh thử làm triệu chứng biến mất, nên em tưởng đã hiểu nguyên nhân.
 
 ---
 

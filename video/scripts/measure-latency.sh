@@ -103,24 +103,26 @@ header() {
   printf -- "---------------+--------------------+----------+----------------+---------------\n"
 }
 
-ENC_TUNED="x264enc tune=zerolatency speed-preset=ultrafast bitrate=${BITRATE} key-int-max=${KEY_INT_MAX}"
+# ENC_TUNED and ENC_DEFAULT come from common.sh. They are not repeated here: the
+# configuration this script measures has to be the configuration sender.sh
+# transmits, and two copies of a string drift the moment one of them is edited.
 
 echo "num_buffers=${NUM_BUFFERS}  warmup=${WARMUP}  resolution=${WIDTH}x${HEIGHT}@${FPS}  (ms)"
 echo
 echo "### Table 1 -- the four configurations"
 header
-run_case "1-default"     "x264enc bitrate=${BITRATE}" 200 true
-run_case "2-zerolatency" "$ENC_TUNED"                 200 true
-run_case "3-jitter0"     "$ENC_TUNED"                 0   true
-run_case "4-sync-off"    "$ENC_TUNED"                 0   false
+run_case "1-default"     "$ENC_DEFAULT" 200 true
+run_case "2-zerolatency" "$ENC_TUNED"   200 true
+run_case "3-jitter0"     "$ENC_TUNED"   0   true
+run_case "4-sync-off"    "$ENC_TUNED"   0   false
 
 echo
 echo "### Table 2 -- which encoder knob costs the latency"
 echo "(jitter=0 and sync=false held fixed; only the encoder line changes)"
 header
-run_case "e-plain"       "x264enc bitrate=${BITRATE}"                        0 false
-run_case "e-lookahead0"  "x264enc bitrate=${BITRATE} rc-lookahead=0"         0 false
-run_case "e-sliced"      "x264enc bitrate=${BITRATE} sliced-threads=true"    0 false
-run_case "e-ultrafast"   "x264enc bitrate=${BITRATE} speed-preset=ultrafast" 0 false
-run_case "e-zerolatency" "x264enc bitrate=${BITRATE} tune=zerolatency"       0 false
-run_case "e-both"        "$ENC_TUNED"                                        0 false
+run_case "e-plain"       "$ENC_DEFAULT"                        0 false
+run_case "e-lookahead0"  "$ENC_DEFAULT rc-lookahead=0"         0 false
+run_case "e-sliced"      "$ENC_DEFAULT sliced-threads=true"    0 false
+run_case "e-ultrafast"   "$ENC_DEFAULT speed-preset=ultrafast" 0 false
+run_case "e-zerolatency" "$ENC_DEFAULT tune=zerolatency"       0 false
+run_case "e-both"        "$ENC_TUNED"                          0 false

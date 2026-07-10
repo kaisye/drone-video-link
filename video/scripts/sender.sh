@@ -20,10 +20,23 @@ PROFILE="${PROFILE:-tuned}"
 # the receiver's frame total can then be compared against a number we chose.
 NUM_BUFFERS="${NUM_BUFFERS:--1}"
 
-# smpte is a still image. That is fine for latency, but it flatters the decoder
-# during packet loss: concealment copies the missing block from the previous
-# picture, which on a still image is the correct block. A real camera moves.
+# smpte is fine for latency. For packet loss the pattern decides whether the
+# damage can be seen at all -- not whether it happened. Measured at 0.15% loss
+# over 600 pictures, median mean-absolute pixel error across the damaged
+# pictures (of 255):
+#
+#   pinwheel   0.01     does not move at all
+#   smpte      0.34
+#   ball       0.58
+#   zone-plate 4.22     73% of its pixels move between frames
+#
+# All four are damaged on 110-155 of those 600 pictures. Only the last one shows
+# it. See results/packet-loss.md and scripts/pattern-damage.sh.
 PATTERN="${PATTERN:-smpte}"
+
+# Further videotestsrc properties, e.g. SRC_EXTRA="kx2=20 ky2=20 kt2=1" for the
+# animated zone plate the demo clip uses.
+SRC_EXTRA="${SRC_EXTRA:-}"
 
 # Replaying a file instead of encoding live takes x264enc out of the experiment.
 # It has to come out: two encodes of identical input differ bit for bit, so a
@@ -50,11 +63,11 @@ if [[ -n "$STREAM" ]]; then
        video/x-h264,stream-format=byte-stream,alignment=au,framerate=${FPS}/1"
   echo "sender: replaying ${STREAM} -> ${HOST}:${PORT}" >&2
 else
-  SRC="videotestsrc is-live=true pattern=${PATTERN} num-buffers=${NUM_BUFFERS} !
+  SRC="videotestsrc is-live=true pattern=${PATTERN} ${SRC_EXTRA} num-buffers=${NUM_BUFFERS} !
        video/x-raw,width=${WIDTH},height=${HEIGHT},framerate=${FPS}/1 !
        timeoverlay halignment=left valignment=top !
        videoconvert ! ${ENC}"
-  echo "sender: profile=${PROFILE} pattern=${PATTERN} -> ${HOST}:${PORT}" \
+  echo "sender: profile=${PROFILE} pattern=${PATTERN} ${SRC_EXTRA} -> ${HOST}:${PORT}" \
        "(${WIDTH}x${HEIGHT}@${FPS}, n=${NUM_BUFFERS})" >&2
 fi
 

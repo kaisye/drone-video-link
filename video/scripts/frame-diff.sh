@@ -78,6 +78,16 @@ if not any_eps:
 worst = max(common, key=lambda k: mae[k])
 print(f"worst picture       : {worst}  (mean abs diff {mae[worst]:.1f})")
 
+# `worst` is a maximum over hundreds of pictures, so it is decided by whether one
+# keyframe slice happened to be hit. It swings by 6x between runs of the same
+# command. Quote the distribution over the damaged pictures instead.
+dmg = sorted(mae[k] for k in common if mae[k] > 0)
+if dmg:
+    med = dmg[len(dmg) // 2]
+    p90 = dmg[min(len(dmg) - 1, int(len(dmg) * 0.90))]
+    print(f"damage amplitude    : median {med:.2f}  p90 {p90:.2f}  "
+          f"mean {sum(dmg)/len(dmg):.2f}   (of 255, over altered pictures)")
+
 def report(eps, title):
     if not eps:
         print(f"\n{title}: none")
@@ -95,14 +105,19 @@ def report(eps, title):
         print(f"{i:>3}  {beg:>6}  {end:>5}  {len(ep):>8}  {len(ep)*1000/30:>5.0f}  "
               f"{at_idr:>12}  {spans:>4}")
     lens = [len(e) for e in eps]
-    at_idr = sum(1 for e in eps if (e[-1] + 1) % gop == 0)
-    # The last run may be cut off by the end of the capture rather than by an IDR.
-    truncated = eps[-1][-1] == common[-1]
+    # The last run may be cut off by the end of the capture rather than by an
+    # IDR. Such an episode cannot end at a keyframe and must not be counted
+    # against the claim -- nor for it. Score it separately, do not silently
+    # include it: that turned a 27/27 into a 7/8 between two runs of the same
+    # command, and the difference was the capture, not the codec.
+    truncated = eps[-1][-1] == common[-1] and (common[-1] + 1) % gop != 0
+    scored = eps[:-1] if truncated else eps
+    at_idr = sum(1 for e in scored if (e[-1] + 1) % gop == 0)
     print(f"    episodes {len(eps)}   mean {sum(lens)/len(lens):.1f} pictures "
           f"({sum(lens)/len(lens)*1000/30:.0f} ms)   longest {max(lens)} "
           f"({max(lens)*1000/30:.0f} ms)")
-    print(f"    ending exactly at an IDR: {at_idr}/{len(eps)}"
-          f"{'  (last run truncated by end of capture)' if truncated else ''}")
+    print(f"    ending exactly at an IDR: {at_idr}/{len(scored)}"
+          f"{'  (1 episode excluded: cut off by the end of the capture)' if truncated else ''}")
     print(f"    expected for one isolated loss: {(gop + 1) / 2:.1f} pictures "
           f"({(gop + 1) / 2 * 1000 / 30:.0f} ms)")
 

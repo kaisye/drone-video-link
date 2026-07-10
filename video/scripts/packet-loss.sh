@@ -133,8 +133,10 @@ mode_row "drop until IDR"    loss2-waitkey "loss 2%"      "$FRAMES"      --wait-
 mode_row "drop until IDR"    rare-waitkey  "loss $LOSS_RARE" "$FRAMES_RARE" --wait-for-keyframe
 
 echo
-echo "GOP is ${KEY_INT_MAX} pictures. A loss at picture k costs the ${KEY_INT_MAX}-k pictures"
-echo "up to the next IDR, so the expected cost of one isolated loss is $(( (KEY_INT_MAX + 1) / 2 ))"
-echo "pictures -- compare with the last row."
+echo "GOP is ${KEY_INT_MAX} pictures. A loss at picture k costs the ${KEY_INT_MAX}-k pictures up"
+echo "to the next IDR, which looks like $(( (KEY_INT_MAX + 1) / 2 )) pictures for one isolated loss. That"
+echo "number is wrong: loss is uniform over *packets*, not pictures, and the keyframe"
+echo "holds 15% of the packets. gop-stats.sh weights by the real packet layout and"
+echo "gets 17.6; the measured mean is 24.1. See results/packet-loss.md."
 echo
 echo "raw receiver logs: $RESULTS/loss-*.log"

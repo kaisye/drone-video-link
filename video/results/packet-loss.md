@@ -12,6 +12,8 @@ PATTERN=pinwheel bash scripts/make-stream.sh /tmp/s.h264 600
 bash scripts/gop-stats.sh /tmp/s.h264 0.0021        # structure + prediction
 # then two captures through netem, and:
 bash scripts/frame-diff.sh /tmp/clean /tmp/lossy 30 # the pixel experiment
+bash scripts/pattern-damage.sh                      # does the pattern hide it?
+bash scripts/idr-vs-p.sh zone-plate "kx2=20 ky2=20 kt2=1"   # IDR vs P, no netem
 ```
 
 ## What is being measured, and what is not
@@ -54,9 +56,9 @@ green stripes rather than a green screen.
 This wrecks the textbook answer to the question in the title, as shown below.
 
 The IDR/P ratio is not a property of H.264, it is a property of the content. On
-the same encoder settings: still colour bars 2.8×, a ball on black 3.2×, a
-rotating pinwheel 15.0×. Any claim that "an I-frame is ten times a P-frame" is a
-claim about a particular video.
+the same encoder settings: colour bars 2.8×, a ball on black 3.2×, a pinwheel
+15.0×. Any claim that "an I-frame is ten times a P-frame" is a claim about a
+particular video.
 
 ## Instruments
 
@@ -306,16 +308,183 @@ it produced — zero on a clean link — was the number I expected. It kept prod
 zero when two thirds of the stream never arrived. A counter that agrees with you
 is not evidence; it has to be shown a case where it *should* move.
 
-**A still test pattern is fine for this.** The first attempt used
-`pattern=smpte`. At 2% loss the PNG size distribution of the lossy run was
-indistinguishable from the clean one, and no picture looked broken: concealment
-copies the missing block from the previous picture, and on a still image that is
-the *correct* block. A camera on a drone never sees a still image. The experiment
-was rerun with motion.
+**A still test pattern hides the damage.** This was the diagnosis after the first
+attempt with `pattern=smpte` showed nothing, and it is wrong twice over. It is in
+the section below, because getting it wrong twice was the more useful result.
 
 **Two runs of the same pipeline are comparable.** They are not — x264enc is not
 bit-reproducible. The whole pixel experiment above rests on freezing the
 bitstream first, and it would have produced confident nonsense otherwise.
+
+**The keyframe's slice is the one that hurts.** Plausible enough that I wrote it
+into this document as the likely cause before testing it. It is 5.8× worse than a
+P slice, and on a still picture it is *still invisible* — 0.23 of 255 against the
+22.6 it was invoked to explain. Being 5.8× worse than nothing is nothing.
+
+## Does the picture hide the damage?
+
+The first attempt at the pixel experiment used `pattern=smpte`, saw nothing, and
+I concluded: *a still image hides packet loss, because concealment copies the
+missing block from the previous picture and on a still image that block is
+correct.* The experiment was rerun "with motion", using `pattern=pinwheel`, and
+the damage appeared. That looked like a confirmation. It was not.
+
+**`pattern=pinwheel` does not move.** Measured over 30 consecutive frames, the
+share of pixels changing by more than 8 of 255 (`scripts/pattern-damage.sh`):
+
+| pattern | pixels that move | spatial detail |
+|---|---|---|
+| `pinwheel` | **0.0%** | 10.6 |
+| `ball motion=sweep` | 2.0% | 1.4 |
+| `smpte` | 5.8% | 6.1 |
+| `zone-plate kx2=20 ky2=20 kt2=1` | 72.9% | 17.0 |
+
+The rerun swapped one still picture for another still picture, and the result
+changed anyway. Whatever fixed it, "adding motion" was not what happened, because
+no motion was added.
+
+So measure the thing properly. Same frozen bitstream, same `loss 0.15%`, 600
+pictures, four patterns. `median` is the median mean-absolute pixel difference
+over the pictures that differ from the reference at all:
+
+| pattern | dropped | altered | median | ends at IDR |
+|---|---|---|---|---|
+| `smpte` | 16 | 118 / 600 | 0.34 | 8/8 |
+| `pinwheel` | 11 | 110 / 600 | **0.01** | 7/7 |
+| `ball motion=sweep` | 10 | 128 / 600 | 0.58 | 8/8 |
+| `zone-plate` | 13 | 151 / 600 | **4.22** | 6/6 |
+
+Three things fall out.
+
+**No pattern hides the damage. Every one of them is wrong on 110–155 pictures of
+600.** `smpte` never concealed the loss; it concealed the *amplitude*, by a
+factor of 400 against the zone plate. The original instrument was a histogram of
+PNG file sizes, and 0.34 of 255 does not move a PNG file size. The picture came
+back wrong on a fifth of its frames and looked perfect.
+
+**Amplitude needs motion, but motion does not rank it.** The pinwheel never moves
+and has the least damage of the four, 0.01 — which is exactly the mechanism I
+first guessed: concealment copies the co-located block from the previous picture,
+and if nothing moved, that block is right. The zone plate moves 73% of its pixels
+and is 400× worse. But `ball` (2.0% moving) beats `smpte` (5.8% moving) on both
+runs, so the ordering in between is not a function of motion alone.
+
+**The headline survives.** Grouping pictures that differ from the reference at
+all — threshold-free, nothing to tune — **29 of 29 damage episodes ended exactly
+at a keyframe**. (The deterministic experiment two sections down puts this beyond
+sampling luck: 36 of 36 episodes, every slice of a picture tried in turn.) A
+second run of the same command gave 29 of 31; both exceptions
+were on `ball`, and they are an artifact of the metric rather than of the codec:
+`ball` is 98% flat black, so a corrupted macroblock in the background renders
+*pixel-identical* to the reference, the difference reads exactly 0.000 for a
+picture or two, and one true episode is chopped into fragments that appear to end
+mid-GOP. The error is still in the decoder's reference buffer. Pixel difference
+measures what you can see, not what the decoder believes.
+
+### Two ways this measurement lied to me
+
+**A maximum is not a statistic.** The first version of this table reported the
+*worst* picture in each run. On `smpte` at 2% loss it read 2.2 in one run and
+12.1 in the next — a factor of six from the same command, because the maximum is
+decided by whether one keyframe slice happened to be hit. It looked like a
+finding. It was a coin toss. The table above reports a median.
+
+**A truncated episode is not a counter-example.** The last damage episode of a
+capture ends when the capture ends, not when a keyframe arrives. Counting it
+turned a 27/27 into a 7/8 between two runs and nearly bought a retraction of the
+central result. `frame-diff.sh` now excludes it and says so.
+
+## Which slice dies: the keyframe's, or a P picture's?
+
+Netem cannot answer this. A keyframe holds 15% of the packets, so a 600-picture
+run yields one or two keyframe losses; two runs of that experiment disagreed by a
+factor of 60. The sample was the result.
+
+So take netem out. `scripts/idr-vs-p.sh` deletes **exactly one slice NAL** from
+the frozen bitstream and decodes. Losing any RTP packet of a NAL loses the whole
+NAL — `rtph264depay` discards an incomplete one — so deleting the NAL is a
+faithful model of losing one of its packets, and it lets us choose the victim.
+Given a bitstream, nothing here is random and the table repeats exactly. Across
+runs it wobbles in the third decimal — 0.226 became 0.225 — because the script
+re-encodes, and x264enc is not bit-reproducible, as this document says two
+sections up. The effects below are 5.8× and 100×, so this does not threaten them,
+but it is the reason no claim here rests on a third decimal.
+
+90 pictures, three GOPs, 11 slices per picture. Each of the 11 slices of picture
+30 (an IDR) is deleted in turn, then each of the 11 slices of picture 15 (a P).
+Three GOPs rather than two, so that the keyframe which heals the IDR victim —
+picture 60 — is inside the capture. At 60 pictures its recovery would be off the
+end of the file, and I would be assuming the heal instead of seeing it.
+
+On `zone-plate kx2=20 ky2=20 kt2=1`, the pattern that actually moves:
+
+| victim | trials | pictures altered | MAE at impact | peak | worst peak |
+|---|---|---|---|---|---|
+| one slice of the IDR, picture 30 | 11 | `30..59`, every time | **10.69** | 10.97 | 24.31 |
+| one slice of a P, picture 15 | 11 | `15..29`, every time | **1.85** | 1.92 | 2.65 |
+
+*(medians over the 11 slices; MAE is of 255. "Impact" is the picture the loss
+lands on, "peak" the worst picture of the episode.)*
+
+**Duration is not a property of the frame type.** It is the distance to the next
+keyframe, and nothing else. The IDR victim costs 30 pictures and the P victim 15
+because picture 30 is a full GOP from rescue and picture 15 is half a GOP away.
+A slice lost in picture 29 would cost exactly one picture. Every one of the 22
+trials produced a *contiguous* run of altered pictures ending exactly at the next
+keyframe — no gaps, no early recovery, no bleed past the IDR.
+
+**Amplitude is a property of the frame type: losing a keyframe's slice is 5.8×
+worse** — 10.69 against 1.85.
+
+**And that gap is decided at impact, not accumulated over the episode.** This is
+the part I could easily have got backwards. The IDR victim's damage lasts twice
+as long, so a bigger peak could simply be error drifting for twice as many
+pictures. It is not: the median peak exceeds the median impact by 3% for the IDR
+and 4% for the P. The whole 5.8× is already present in the first damaged picture.
+Concealing an intra-coded band is what is hard; the rest of the GOP just carries
+the result forward. Drift is real but secondary — the worst single slice grew
+from 10.69 at impact to 24.31 by the end of its GOP.
+
+Now the same 22 trials on the still `pinwheel`:
+
+| victim | trials | trials that changed *any* pixel | MAE at impact | worst peak |
+|---|---|---|---|---|
+| one slice of the IDR, picture 30 | 11 | 11 | 0.069 | 0.225 |
+| one slice of a P, picture 15 | 11 | **3** | 0.000 | 0.149 |
+
+On a still image, 8 of the 11 P-slice deletions decode **pixel-identical to the
+reference** — MAE exactly 0.000. That is the concealment mechanism caught in the
+act: it copies the co-located band from the previous picture, and when nothing
+moved, the copy is not an approximation, it is the right answer. The IDR is
+different in kind — all 11 of its slices leave a residue — but at 0.07 of 255 the
+residue is invisible.
+
+On the pinwheel, peak equals impact to three decimals in all 22 trials. A frozen
+band copied forward through a frozen picture does not drift. Motion is what turns
+a concealment error into an error that grows.
+
+### What this rules out
+
+The suspect named in the previous version of this document was that pinwheel's
+collapse at 2% loss is keyframe-slice loss: an IDR is coded without reference to
+anything, so perhaps concealment has no previous picture to copy from.
+
+**That is wrong, and this experiment is what shows it.** A lost IDR slice on the
+pinwheel peaks at 0.23 of 255. The wrecked picture screenshotted above, same
+pattern at 2% loss, sits flat at 22.6 of 255 for a whole GOP — a hundred times
+larger. One dead keyframe slice does not do that. The decoder plainly *does* hold
+the previous picture and copy from it, even across an IDR.
+
+### Still open
+
+What does happen to the pinwheel at 2%, then. At 0.15% loss this stream drops
+about one packet per two GOPs, so a concealed band is nearly always copied from a
+*correct* neighbour. At 2% it drops one per 6 pictures: many slices per GOP, on
+consecutive pictures, and the previous picture — the thing concealment copies
+from — is itself already wrong. The still image stops being its own best
+predictor. That is a testable claim (delete the same slice index from *k*
+consecutive pictures and watch the peak as *k* grows) and I have not tested it,
+so it stays a hypothesis here rather than a result.
 
 ## Mapping to Jetson Orin NX
 
