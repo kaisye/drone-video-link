@@ -34,11 +34,29 @@ what is real and what is simulated.
 
 | Metric | Value |
 |---|---|
-| End-to-end pipeline latency (tuned) | _TBD_ |
-| End-to-end pipeline latency (default) | _TBD_ |
-| Behaviour under 2% packet loss | _TBD_ |
+| Pipeline latency, stock defaults | **2288 ms** |
+| Pipeline latency, tuned | **7.8 ms** — and it is not B-frames; `x264enc` ships with `bframes=0` |
+| Where the 2 s went | rate-control lookahead (40 frames, costing 40 frames) + one frame per encoder thread |
+| Behaviour under 2% packet loss | every picture is delivered; the pixels are wrong for up to a second |
+| How long one lost packet corrupts the picture | until the next keyframe — 29 of 29 damage episodes across four test patterns, and 36 of 36 when the packet is chosen rather than random |
+| Losing a keyframe's slice vs a P picture's | **5.8× the pixel error**, and it is decided in the picture the packet was lost in, not accumulated after it |
+| What the application sees at 20% loss | 474 packets gone, 148/150 pictures delivered, **zero decoder flags** |
+| Cost of `rtpjitterbuffer latency=0` | 67 of 300 pictures under ±5 ms jitter with **no packet loss at all** |
 
-Full method and numbers: [`video/results/`](video/results/).
+Every number here was measured on this machine, and the script that produces it is in the
+repo. Full method: [`video/results/latency.md`](video/results/latency.md) and
+[`video/results/packet-loss.md`](video/results/packet-loss.md).
+
+Demo: 30 seconds of the received video, impaired half way through and recovering —
+[`docs/assets/demo.mp4`](docs/assets/demo.mp4).
+
+On the MAVLink side: a heartbeat watchdog that declares `LINK LOST` within one 3-second
+failsafe interval (unit-tested against an injected clock, 7/7), telemetry parsed and scaled
+to SI then logged to CSV/JSONL, and arm/takeoff/land that verify each `COMMAND_ACK` and honour
+ArduPilot's command ordering. Validated end to end against a real **ArduPilot SITL** build —
+`takeoff 10` arms and climbs to 10 m repeatably — which caught two bugs a mock had hidden
+(telemetry stream requests, and the pre-arm race). Details in
+[`mavlink/README.md`](mavlink/README.md).
 
 ## Documentation
 

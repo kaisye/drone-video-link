@@ -10,12 +10,20 @@ __pycache__/
 .venv/
 venv/
 
-# Runtime output
+# Runtime output. Keep one short committed sample of each format as evidence,
+# the way the video half keeps its loss-*.log: a reader should see the shape of
+# the telemetry without running a flight controller.
 mavlink/logs/*.csv
 mavlink/logs/*.jsonl
-video/results/*.log
+!mavlink/logs/telemetry.sample.csv
+!mavlink/logs/telemetry.sample.jsonl
 *.mp4
 *.mkv
+
+# GST_TRACERS traces: ~700 KB of DEBUG lines each, 5.8 MB for one full sweep.
+# measure-latency.sh regenerates them and prints the medians; the raw records
+# are not worth a reviewer's bandwidth.
+video/results/trace-*.log
 
 # Experiment intermediates: frozen bitstreams and captured frames. Regenerate
 # them with make-stream.sh and capture-frames.sh; a 600-picture capture is
@@ -24,7 +32,10 @@ video/results/*.log
 *.rgb
 video/results/frames-*/
 
-# Keep the demo clip and committed results
+# Keep the demo clip and the committed results. The loss-*.log files are the
+# receiver's own output, ~1.5 KB each: they are the evidence behind every row of
+# the packet-loss tables, and a reader should be able to check the summary line
+# without owning a machine.
 !docs/assets/demo.mp4
 !video/results/latency.md
 !video/results/packet-loss.md

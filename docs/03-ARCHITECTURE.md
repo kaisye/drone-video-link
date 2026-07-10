@@ -76,30 +76,54 @@ drone-video-link/
 │   ├── src/
 │   │   └── receiver.cpp       ★ app C++ dùng GStreamer C API + appsink
 │   ├── scripts/
+│   │   ├── common.sh          hằng số mạng + chuỗi encoder; mọi script đều source
 │   │   ├── sender.sh          pipeline gửi (gst-launch)
 │   │   ├── receiver.sh        pipeline nhận tham chiếu (gst-launch)
 │   │   ├── measure-latency.sh chạy với GST_TRACERS
-│   │   └── netem.sh           bật/tắt giả lập mạng xấu
+│   │   ├── netem.sh           bật/tắt giả lập mạng xấu           [root]
+│   │   ├── demo.sh            kịch bản netem cho demo trực tiếp   [root]
+│   │   ├── record-demo.sh     quay demo.mp4 headless              [root]
+│   │   ├── packet-loss.sh     hai bảng giao nhận, hai dụng cụ đo  [root]
+│   │   ├── pattern-damage.sh  ảnh thử có che mất hỏng hóc không?  [root]
+│   │   ├── make-stream.sh     đóng băng bitstream (x264enc không tái lập được)
+│   │   ├── gop-stats.sh       đọc NAL Annex-B: cấu trúc GOP, mô hình gói
+│   │   ├── capture-frames.sh  ghi từng ảnh đã giải mã ra PNG + RGB thô
+│   │   ├── frame-diff.sh      sai khác từng pixel, gom thành "đợt hỏng"
+│   │   └── idr-vs-p.sh        xoá đúng một slice NAL rồi giải mã
 │   └── results/
 │       ├── latency.md         BẢNG SỐ LIỆU — thứ đi lên CV
 │       ├── packet-loss.md     screenshot + giải thích
-│       └── *.log              raw trace
+│       ├── img/*.png          ảnh sạch / vỡ / hồi phục
+│       └── loss-*.log         log gốc của receiver (trace-*.log bị gitignore)
 │
 └── mavlink/                   ← Ngày 2
     ├── README.md
-    ├── requirements.txt       pymavlink, paho-mqtt
+    ├── requirements.txt       pymavlink, MAVProxy, paho-mqtt
     ├── gateway/
-    │   ├── connection.py      kết nối UDP, wait_heartbeat
-    │   ├── watchdog.py        phát hiện mất link
-    │   ├── telemetry.py       parse message, scale đơn vị
-    │   ├── commands.py        arm / takeoff / land, đọc COMMAND_ACK
-    │   ├── mqtt_bridge.py     [P2]
-    │   └── cli.py             entrypoint
+    │   ├── __init__.py        docstring: MAVLink hai chiều bất đối xứng
+    │   ├── connection.py      kết nối UDP, wait_heartbeat, học system id
+    │   ├── watchdog.py        máy trạng thái edge-triggered, clock tiêm được
+    │   ├── telemetry.py       parse + scale SI, gộp 1 snapshot, logger CSV/JSONL
+    │   ├── commands.py        arm/takeoff/land, khớp COMMAND_ACK, đúng thứ tự
+    │   ├── mqtt_bridge.py     publish snapshot lên broker            [P2]
+    │   └── cli.py             entrypoint: monitor / takeoff / land / arm
     ├── scripts/
-    │   ├── run-sitl.sh        khởi động ArduPilot SITL
-    │   └── mock_fc.py         FALLBACK: giả lập FC nếu SITL không dựng được
-    └── logs/                  telemetry.csv, telemetry.jsonl (gitignored)
+    │   ├── run-sitl.sh        khởi động ArduPilot SITL           [cần tree đã build]
+    │   └── mock_fc.py         FC giả cho lặp nhanh; trả lời lệnh, stream GPS
+    ├── tests/
+    │   └── test_watchdog.py   7 test cho logic failsafe, clock giả
+    └── logs/                  telemetry.csv/.jsonl (gitignored);
+                               telemetry.sample.* (từ SITL thật, giữ làm bằng chứng)
 ```
+
+**Đã kiểm chứng với ArduPilot SITL thật.** Gateway chạy end-to-end với một bản
+build ArduCopter SITL (x86, EKF thật, pre-arm thật, qua TCP 5760): `takeoff 10`
+arm và leo tới 10 m, lặp lại được qua nhiều lần khởi động lạnh. `mock_fc.py` là để
+lặp nhanh, nhưng nó và gateway chung một cách hiểu spec nên **không** phải kiểm
+chứng độc lập — và đúng như thế, SITL bắt được **hai lỗi mock giấu**: (1) ArduPilot
+không stream telemetry nếu GCS không gửi `REQUEST_DATA_STREAM`; (2) bit sức khoẻ
+sensor xanh *trước* khi thật sự arm được (cần GPS 3D fix + EKF origin), nên arm một
+lần là thua cuộc đua. Cả hai đã sửa. Chi tiết ở `mavlink/README.md`.
 
 ## 4. Vì sao một repo, không phải hai
 
