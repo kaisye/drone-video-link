@@ -2,8 +2,8 @@
 
 > **Cách dùng file này:** cập nhật sau *mỗi* task xong, không để dồn cuối ngày. Khi quay lại làm việc sau khi nghỉ, đọc file này trước tiên. Nếu bạn (hoặc AI assistant) mở lại project sau vài ngày, đây là file duy nhất cần đọc để biết đang đứng ở đâu.
 
-**Cập nhật lần cuối:** 2026-07-10, hết T1.4
-**Đang làm:** T1.5 — thí nghiệm `tc netem`
+**Cập nhật lần cuối:** 2026-07-10, hết T1.5
+**Đang làm:** T1.6 — README `video/` + demo
 **Blocker hiện tại:** —
 
 **Môi trường:** WSL2 `Ubuntu-22.04` (chú ý: distro mặc định là `docker-desktop`, phải gọi `wsl -d Ubuntu-22.04`). GStreamer 1.20.3, g++ 11.4, cmake 3.22, 16 lõi. `tc netem` cần chạy bằng root (`wsl -d Ubuntu-22.04 -u root`).
@@ -22,8 +22,8 @@ Ký hiệu: `[ ]` chưa làm · `[~]` đang làm · `[x]` xong, đạt DoD · `[
 | `[x]` | T1.2 Sender/receiver `gst-launch` | P0 | ✔ 235 frame, 0 drop, 30.01 fps | |
 | `[x]` | T1.3 **Receiver C++ + CMake** | P1 ★ | ✔ build sạch, valgrind sạch | |
 | `[x]` | T1.4 Đo latency | P1 | ✔ 2288 ms → 7.8 ms | phát hiện giả định B-frame sai |
-| `[~]` | T1.5 Thí nghiệm `tc netem` | P1 | | |
-| `[ ]` | T1.6 README + demo video | P0 | | |
+| `[x]` | T1.5 Thí nghiệm `tc netem` | P1 | ✔ 3 ảnh + `packet-loss.md` | `discont` không bắt được mất gói |
+| `[~]` | T1.6 README + demo video | P0 | | |
 
 ### Ngày 2 — MAVLink
 
@@ -56,6 +56,9 @@ Project chỉ coi là thành công khi bạn tự trả lời được, **không
 - `[ ]` `tune=zerolatency` thực chất tắt những gì trong x264?
 - `[ ]` `sync=false` ở sink nghĩa là gì?
 - `[ ]` Mất 1 gói UDP, vì sao hình vỡ cả giây chứ không phải 1 frame?
+- `[ ]` Vì sao "hỏng nửa GOP" là câu trả lời sai, và câu đúng phụ thuộc vào cái gì?
+- `[ ]` Ứng dụng làm sao biết đang mất gói? Vì sao `discont`/`CORRUPTED` vô dụng?
+- `[ ]` `latency=0` phải trả giá bao nhiêu khi mạng có jitter?
 - `[ ]` `appsink` khác `autovideosink` chỗ nào, và khi nào cần?
 - `[ ]` Caps negotiation là gì, vì sao `udpsrc` phải khai caps thủ công?
 - `[ ]` MAVLink heartbeat mất bao lâu thì coi là đứt link, vì sao con số đó?
@@ -89,6 +92,15 @@ YYYY-MM-DD HH:MM — <task> — <việc đã làm> — <vấn đề gặp> — <
 - `sync=false` chỉ bớt 15 ms, nhưng chỗ nó hiện ra không phải chỗ nó gây hại: khi sink nghẽn, buffer dồn ứ **trong jitter buffer** (15,5 ms → 0,8 ms). Element báo triệu chứng ≠ element có bệnh.
 - Mean bị lệch vì lúc EOS encoder xả hàng nhanh, kéo mean xuống dưới giá trị trạng thái ổn định (1623 vs median 2070). Dùng median.
 
+**2026-07-10 — T1.5** — Thí nghiệm `tc netem`. **Dụng cụ đo sai ba lần trước khi đúng.**
+1. **`GST_BUFFER_FLAG_DISCONT` không bắt được mất gói.** Tôi đã viết đúng câu đó vào comment của `receiver.cpp` ở T1.3. Quét từ 0→20% loss: ở 20%, mất 474 gói, ứng dụng vẫn nhận 148/150 frame, `discont=0`, `CORRUPTED=0`. `avdec_h264` che lỗi im lặng. Dụng cụ đúng là property `stats` của `rtpjitterbuffer` → `num-lost`, và nó phải được đối chiếu với `tc -s qdisc` của kernel.
+2. **`num-lost` cũng nói dối khi có đảo gói.** Link chỉ mất gói: `tc`=101, `num-lost`=101, khớp tuyệt đối. Thêm jitter: `num-lost`=3640 trong khi 4580 gói vẫn được đẩy và 270/300 frame giải mã được. Nó đếm *lần phát hiện khoảng trống*, không phải *gói mất*.
+3. **`x264enc` không bit-reproducible.** So hai lần chạy sạch với nhau ra 300/300 frame khác nhau. `md5sum` hai lần encode cùng input tất định → hai file khác nhau. Phải **đóng băng bitstream ra file rồi phát lại** thì control mới cho 600/600 frame trùng khít từng bit.
+- Cái bẫy thứ tư: dùng ảnh tĩnh SMPTE thì **không thấy hình vỡ ở đâu cả**, vì concealment chép khối từ frame trước — mà với ảnh tĩnh khối đó *đúng*. Camera drone không đứng yên. Đổi sang `pattern=pinwheel`.
+- Kết quả: **10/10 đợt hỏng kết thúc đúng tại một IDR.** Sai lệch không phai (phẳng 22,6 suốt GOP rồi rơi về 0,3 tại IDR, và 0,0 tại IDR sạch).
+- Phát hiện phản trực giác: "mất 1 gói hỏng nửa GOP" **sai**. Keyframe chiếm 15% số gói (to gấp 15× P-frame), nên kỳ vọng theo phân bố gói là 17,6 frame, đo được 24,1. Monte Carlo trên đúng layout gói: mô hình 61% GOP hỏng / 20,1 frame, đo được 55% / 24,1 frame.
+- Và cái giá của `latency=0` (chọn ở T1.4): jitter ±5 ms, **mất 0 gói** → chỉ giải mã được 67/300 frame. `latency=200` → 270–300/300.
+
 ---
 
 ## Số liệu đã đo
@@ -105,4 +117,13 @@ YYYY-MM-DD HH:MM — <task> — <việc đã làm> — <vấn đề gặp> — <
 | Chi phí frame threading | ~1 frame/luồng (28 frame ở 16 lõi) | ép `rc-lookahead=0`, quét threads |
 | Kích thước frame I420 | 1 382 400 B = 1280×720×1.5 | `receiver.cpp`, `gst_buffer_map` |
 | Rò bộ nhớ theo frame | **0** (16 448 B hằng số, cấp phát trước `main`) | valgrind ở 50 và 173 frame |
-| Hành vi ở 2% packet loss | _chưa đo_ | T1.5 |
+| Slice mỗi picture | **11** (do sliced threads) | `scripts/gop-stats.sh` |
+| Khoảng cách IDR | đúng 30 picture (min=max) | như trên, quét NAL Annex-B |
+| Tỉ lệ I/P | 2,8× (smpte) · 3,2× (ball) · **15,0×** (pinwheel) | như trên |
+| Gói thuộc keyframe | **15%** tổng số gói | như trên, mô hình FU-A mtu=1400 |
+| Đợt hỏng kết thúc tại IDR | **10/10** | `scripts/frame-diff.sh`, bitstream đóng băng |
+| Thiệt hại mỗi GOP bị trúng | **24,1 picture ≈ 803 ms** (mô hình: 20,1) | như trên |
+| Cờ `discont`/`CORRUPTED` ở 20% loss | **0 / 0** (decoder che lỗi im lặng) | quét loss 0→20% |
+| `latency=0`, jitter ±5 ms, **0 gói mất** | chỉ **67/300** picture | control `netem delay 20ms 5ms` |
+| `latency=200`, cùng điều kiện | **270–300/300** picture | 3 lần chạy |
+| `wait-for-keyframe` ở 2% loss | **11/300** picture được hiển thị | `receiver --wait-for-keyframe` |

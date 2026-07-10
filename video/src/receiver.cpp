@@ -22,12 +22,15 @@ struct Options {
     int  jitter_latency = 0;      // ms; 0 = hand packets on immediately
     bool sync           = false;  // false = render on arrival, ignore PTS
     bool verbose        = false;  // print one line per frame
+    bool lost_events    = true;   // jitterbuffer announces gaps downstream
+    bool wait_keyframe  = false;  // after a loss, output nothing until the next IDR
 };
 
 struct Stats {
     std::atomic<guint64> frames{0};
     std::atomic<guint64> bytes{0};
     std::atomic<guint64> discontinuities{0};
+    std::atomic<guint64> corrupted{0};
 
     // Written only from the streaming thread, read from the main-loop timer.
     // A torn read costs us a wrong digit in a log line, nothing more.
@@ -92,12 +95,20 @@ GstFlowReturn on_new_sample(GstAppSink *appsink, gpointer user_data) {
 
         const guint64 n = ++ctx->stats.frames;
 
-        // The decoder sets DISCONT when the stream it received was not contiguous --
-        // the direct fingerprint of dropped RTP packets during the netem experiment.
-        // The very first buffer always carries it (a stream starts discontinuous),
-        // so counting it would put the loss-free baseline at 1 instead of 0.
+        // DISCONT means "this buffer does not continue the previous one", not
+        // "the data is damaged". It only appears here if the jitterbuffer was
+        // told to announce gaps (do-lost=true); with the default it stays clear
+        // even when two thirds of the stream never arrives. Measured, painfully.
+        // The very first buffer always carries it -- a stream starts
+        // discontinuous -- so counting it would make the clean baseline 1, not 0.
         if (n > 1 && GST_BUFFER_FLAG_IS_SET(buf, GST_BUFFER_FLAG_DISCONT))
             ctx->stats.discontinuities++;
+
+        // CORRUPTED is the decoder's own verdict: it produced this picture from
+        // an incomplete bitstream. This is the flag that actually tracks loss.
+        if (GST_BUFFER_FLAG_IS_SET(buf, GST_BUFFER_FLAG_CORRUPTED))
+            ctx->stats.corrupted++;
+
         if (ctx->opts.verbose) {
             g_print("[frame %6" G_GUINT64_FORMAT "] %dx%d  pts=%" GST_TIME_FORMAT "  size=%zu\n",
                     n, ctx->stats.width, ctx->stats.height,
@@ -122,11 +133,32 @@ gboolean on_stats_tick(gpointer user_data) {
     const double avg_fps = elapsed_us > 0 ? total * 1e6 / elapsed_us : 0.0;
 
     g_print("[stats] frames=%" G_GUINT64_FORMAT "  fps=%" G_GUINT64_FORMAT
-            "  avg=%.2f  discont=%" G_GUINT64_FORMAT "  last_pts=%" GST_TIME_FORMAT "\n",
+            "  avg=%.2f  discont=%" G_GUINT64_FORMAT "  corrupt=%" G_GUINT64_FORMAT
+            "  last_pts=%" GST_TIME_FORMAT "\n",
             total, delta, avg_fps, ctx->stats.discontinuities.load(),
-            GST_TIME_ARGS(ctx->stats.last_pts));
+            ctx->stats.corrupted.load(), GST_TIME_ARGS(ctx->stats.last_pts));
 
     return G_SOURCE_CONTINUE;
+}
+
+// The jitterbuffer is the only element that sees RTP sequence numbers, so it is
+// the only element that can say how many packets never arrived. Everything
+// downstream sees pictures, and a picture missing one slice still looks like a
+// picture. Read this before going to NULL: the counters do not survive the
+// state change.
+void print_jitterbuffer_stats(GstElement *pipeline) {
+    GstElement *jb = gst_bin_get_by_name(GST_BIN(pipeline), "jbuf");
+    if (!jb) return;
+
+    GstStructure *s = nullptr;
+    g_object_get(jb, "stats", &s, nullptr);
+    if (s) {
+        gchar *txt = gst_structure_to_string(s);
+        g_print("[jitterbuf] %s\n", txt);
+        g_free(txt);
+        gst_structure_free(s);
+    }
+    gst_object_unref(jb);
 }
 
 gboolean on_bus_message(GstBus *, GstMessage *msg, gpointer user_data) {
@@ -171,10 +203,13 @@ gboolean on_sigint(gpointer user_data) {
 }
 
 void print_usage(const char *argv0) {
-    g_print("usage: %s [--port N] [--jitter-latency MS] [--sync] [--verbose]\n\n"
+    g_print("usage: %s [--port N] [--jitter-latency MS] [--sync]\n"
+            "          [--no-lost-events] [--wait-for-keyframe] [--verbose]\n\n"
             "  --port N            UDP port to listen on            (default 5000)\n"
             "  --jitter-latency MS rtpjitterbuffer depth            (default 0)\n"
             "  --sync              honour buffer PTS at the sink    (default off)\n"
+            "  --no-lost-events    jitterbuffer stays silent about gaps (do-lost=false)\n"
+            "  --wait-for-keyframe drop pictures after a loss until the next IDR\n"
             "  --verbose           print one line per frame\n",
             argv0);
 }
@@ -190,6 +225,8 @@ bool parse_args(int argc, char **argv, Options *o) {
         if (a == "--port") { if (!next_int(&o->port)) return false; }
         else if (a == "--jitter-latency") { if (!next_int(&o->jitter_latency)) return false; }
         else if (a == "--sync") { o->sync = true; }
+        else if (a == "--no-lost-events") { o->lost_events = false; }
+        else if (a == "--wait-for-keyframe") { o->wait_keyframe = true; }
         else if (a == "--verbose" || a == "-v") { o->verbose = true; }
         else if (a == "--help" || a == "-h") { print_usage(argv[0]); std::exit(0); }
         else { g_printerr("unknown argument: %s\n", a.c_str()); return false; }
@@ -210,14 +247,27 @@ int main(int argc, char **argv) {
 
     // udpsrc cannot negotiate caps: an RTP header names a payload type number, not a
     // format. Sender and receiver agree on 96 out of band -- SDP does this in production.
+    // buffer-size raises the kernel receive buffer: a stalled reader must not be
+    // mistaken for a lossy network. do-lost makes the jitterbuffer emit an event
+    // on every sequence gap, which is what lets the decoder flag the damage.
+    //
+    // wait-for-keyframe picks the failure mode. Off (default): the decoder is
+    // handed the surviving slices and conceals the hole, so the operator sees a
+    // damaged picture. On: the depayloader emits nothing until the next IDR, so
+    // the operator sees the last good picture frozen. Neither is free, and which
+    // one a drone wants depends on whether a wrong pixel is worse than no pixel.
     gchar *desc = g_strdup_printf(
-        "udpsrc port=%d caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! "
-        "rtpjitterbuffer latency=%d ! "
-        "rtph264depay ! "
+        "udpsrc port=%d buffer-size=4194304 "
+        "caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! "
+        "rtpjitterbuffer name=jbuf latency=%d do-lost=%s ! "
+        "rtph264depay wait-for-keyframe=%s ! "
         "avdec_h264 ! "
         "videoconvert ! video/x-raw,format=I420 ! "
         "appsink name=sink sync=%s max-buffers=2 drop=true",
-        ctx.opts.port, ctx.opts.jitter_latency, ctx.opts.sync ? "true" : "false");
+        ctx.opts.port, ctx.opts.jitter_latency,
+        ctx.opts.lost_events ? "true" : "false",
+        ctx.opts.wait_keyframe ? "true" : "false",
+        ctx.opts.sync ? "true" : "false");
 
     GError *err = nullptr;
     GstElement *pipeline = gst_parse_launch(desc, &err);
@@ -247,19 +297,22 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    g_print("receiver: listening on udp/%d  jitter=%dms  sync=%s\n",
-            ctx.opts.port, ctx.opts.jitter_latency, ctx.opts.sync ? "on" : "off");
+    g_print("receiver: listening on udp/%d  jitter=%dms  sync=%s  on-loss=%s\n",
+            ctx.opts.port, ctx.opts.jitter_latency, ctx.opts.sync ? "on" : "off",
+            ctx.opts.wait_keyframe ? "drop-until-keyframe" : "conceal");
 
     g_main_loop_run(ctx.loop);
 
+    print_jitterbuffer_stats(pipeline);
     gst_element_set_state(pipeline, GST_STATE_NULL);
 
     const guint64 frames = ctx.stats.frames.load();
     const gint64  us     = g_get_monotonic_time() - ctx.stats.wall_start_us;
-    g_print("\n[summary] frames=%" G_GUINT64_FORMAT "  bytes=%" G_GUINT64_FORMAT
-            "  discont=%" G_GUINT64_FORMAT "  elapsed=%.1fs  avg_fps=%.2f\n",
+    g_print("[summary] frames=%" G_GUINT64_FORMAT "  bytes=%" G_GUINT64_FORMAT
+            "  discont=%" G_GUINT64_FORMAT "  corrupt=%" G_GUINT64_FORMAT
+            "  elapsed=%.1fs  avg_fps=%.2f\n",
             frames, ctx.stats.bytes.load(), ctx.stats.discontinuities.load(),
-            us / 1e6, us > 0 ? frames * 1e6 / us : 0.0);
+            ctx.stats.corrupted.load(), us / 1e6, us > 0 ? frames * 1e6 / us : 0.0);
 
     gst_object_unref(bus);
     gst_object_unref(sink);

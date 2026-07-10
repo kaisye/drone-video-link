@@ -17,10 +17,18 @@ video/results/*.log
 *.mp4
 *.mkv
 
+# Experiment intermediates: frozen bitstreams and captured frames. Regenerate
+# them with make-stream.sh and capture-frames.sh; a 600-picture capture is
+# ~380 MB and has no business in git.
+*.h264
+*.rgb
+video/results/frames-*/
+
 # Keep the demo clip and committed results
 !docs/assets/demo.mp4
 !video/results/latency.md
 !video/results/packet-loss.md
+!video/results/img/*.png
 
 # Editors / OS
 .vscode/

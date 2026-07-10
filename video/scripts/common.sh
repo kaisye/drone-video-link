@@ -19,3 +19,17 @@ KEY_INT_MAX="${KEY_INT_MAX:-30}"
 PT=96
 
 RTP_CAPS="application/x-rtp,media=video,encoding-name=H264,payload=${PT}"
+
+# Encoder settings live here because sender.sh and gop-stats.sh must agree on
+# them: the GOP structure one script measures has to be the GOP structure the
+# other script transmits.
+#
+# tune=zerolatency sets rc-lookahead=0 and switches to sliced threads. It is not
+# about B-frames -- x264enc already defaults to bframes=0. Measured: 2067 ms ->
+# 4.2 ms of encoder latency (results/latency.md).
+ENC_TUNED="x264enc tune=zerolatency speed-preset=ultrafast bitrate=${BITRATE} key-int-max=${KEY_INT_MAX}"
+
+# Stock defaults: 40 frames of rate-control lookahead plus one frame held per
+# encoder thread. Roughly two seconds of delay on a 16-core host. This is the
+# baseline row of the latency table, not something anyone would ship.
+ENC_DEFAULT="x264enc bitrate=${BITRATE}"
