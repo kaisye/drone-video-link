@@ -1,8 +1,9 @@
 # Pipeline latency
 
 Measured with GStreamer's built-in tracer, `GST_TRACERS="latency(flags=pipeline+element)"`,
-by [`../scripts/measure-latency.sh`](../scripts/measure-latency.sh). Raw traces are the
-`trace-*.log` files beside this one.
+by [`../scripts/measure-latency.sh`](../scripts/measure-latency.sh). The raw `trace-*.log`
+files are ~700 KB of DEBUG records each and are **not** committed; the script regenerates
+them here and prints the medians below.
 
 **Host:** WSL2 Ubuntu 22.04, 16 logical cores, GStreamer 1.20.3, x86-64 software encoding.
 **Stream:** 1280x720 @ 30 fps, `videotestsrc pattern=smpte`, 2 Mbps target.

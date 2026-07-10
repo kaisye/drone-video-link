@@ -1,0 +1,18 @@
+receiver: listening on udp/5000  jitter=0ms  sync=off  on-loss=conceal
+[caps] 1280x720 @ 30/1 fps, format=I420
+[stats] frames=8  fps=8  avg=6.22  discont=0  corrupt=0  last_pts=0:00:01.279842315
+[stats] frames=38  fps=30  avg=16.62  discont=0  corrupt=0  last_pts=0:00:02.279931097
+[stats] frames=68  fps=30  avg=20.69  discont=0  corrupt=0  last_pts=0:00:03.279944939
+[stats] frames=98  fps=30  avg=22.86  discont=0  corrupt=0  last_pts=0:00:04.280124292
+[stats] frames=128  fps=30  avg=24.21  discont=0  corrupt=0  last_pts=0:00:05.279926985
+[stats] frames=158  fps=30  avg=25.13  discont=0  corrupt=0  last_pts=0:00:06.279906372
+[stats] frames=188  fps=30  avg=25.80  discont=0  corrupt=0  last_pts=0:00:07.279848311
+[stats] frames=218  fps=30  avg=26.30  discont=0  corrupt=0  last_pts=0:00:08.279795214
+[stats] frames=248  fps=30  avg=26.70  discont=0  corrupt=0  last_pts=0:00:09.279769823
+[stats] frames=278  fps=30  avg=27.02  discont=0  corrupt=0  last_pts=0:00:10.279947484
+[stats] frames=300  fps=22  avg=26.58  discont=0  corrupt=0  last_pts=0:00:11.013243639
+[stats] frames=300  fps=0  avg=24.42  discont=0  corrupt=0  last_pts=0:00:11.013243639
+
+[sigint] shutting down
+[jitterbuf] application/x-rtp-jitterbuffer-stats, num-pushed=(guint64)4604, num-lost=(guint64)86, num-late=(guint64)0, num-duplicates=(guint64)0, avg-jitter=(guint64)13471, rtx-count=(guint64)0, rtx-success-count=(guint64)0, rtx-per-packet=(double)0, rtx-rtt=(guint64)0;
+[summary] frames=300  bytes=414720000  discont=0  corrupt=0  elapsed=13.0s  avg_fps=23.03

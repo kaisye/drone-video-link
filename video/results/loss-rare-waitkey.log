@@ -1,0 +1,38 @@
+receiver: listening on udp/5000  jitter=0ms  sync=off  on-loss=drop-until-keyframe
+[caps] 1280x720 @ 30/1 fps, format=I420
+[stats] frames=11  fps=11  avg=6.52  discont=0  corrupt=0  last_pts=0:00:01.382282498
+[stats] frames=31  fps=20  avg=11.53  discont=0  corrupt=0  last_pts=0:00:02.682603653
+[stats] frames=61  fps=30  avg=16.54  discont=0  corrupt=0  last_pts=0:00:03.682327045
+[stats] frames=91  fps=30  avg=19.41  discont=0  corrupt=0  last_pts=0:00:04.682429498
+[stats] frames=121  fps=30  avg=21.27  discont=0  corrupt=0  last_pts=0:00:05.682652697
+[stats] frames=137  fps=16  avg=20.48  discont=0  corrupt=0  last_pts=0:00:06.215797877
+[stats] frames=157  fps=20  avg=20.42  discont=0  corrupt=0  last_pts=0:00:07.682363865
+[stats] frames=187  fps=30  avg=21.52  discont=0  corrupt=0  last_pts=0:00:08.682471464
+[stats] frames=217  fps=30  avg=22.40  discont=0  corrupt=0  last_pts=0:00:09.682343024
+[stats] frames=237  fps=20  avg=22.17  discont=0  corrupt=0  last_pts=0:00:10.682343618
+[stats] frames=248  fps=11  avg=21.22  discont=0  corrupt=0  last_pts=0:00:11.048907543
+[stats] frames=268  fps=20  avg=21.12  discont=0  corrupt=0  last_pts=0:00:12.682247125
+[stats] frames=290  fps=22  avg=21.19  discont=0  corrupt=0  last_pts=0:00:13.682242437
+[stats] frames=320  fps=30  avg=21.78  discont=0  corrupt=0  last_pts=0:00:14.682389531
+[stats] frames=339  fps=19  avg=21.61  discont=0  corrupt=0  last_pts=0:00:15.315833696
+[stats] frames=359  fps=20  avg=21.51  discont=0  corrupt=0  last_pts=0:00:16.682271152
+[stats] frames=382  fps=23  avg=21.60  discont=0  corrupt=0  last_pts=0:00:17.682410310
+[stats] frames=412  fps=30  avg=22.05  discont=0  corrupt=0  last_pts=0:00:18.682379133
+[stats] frames=432  fps=20  avg=21.94  discont=0  corrupt=0  last_pts=0:00:19.682308837
+[stats] frames=462  fps=30  avg=22.33  discont=0  corrupt=0  last_pts=0:00:20.682295313
+[stats] frames=492  fps=30  avg=22.68  discont=0  corrupt=0  last_pts=0:00:21.682383763
+[stats] frames=521  fps=29  avg=22.96  discont=0  corrupt=0  last_pts=0:00:22.648923135
+[stats] frames=541  fps=20  avg=22.84  discont=0  corrupt=0  last_pts=0:00:23.682436115
+[stats] frames=552  fps=11  avg=22.36  discont=0  corrupt=0  last_pts=0:00:24.048922255
+[stats] frames=572  fps=20  avg=22.27  discont=0  corrupt=0  last_pts=0:00:25.682290174
+[stats] frames=576  fps=4  avg=21.58  discont=0  corrupt=0  last_pts=0:00:26.049184082
+[stats] frames=596  fps=20  avg=21.52  discont=0  corrupt=0  last_pts=0:00:27.682308488
+[stats] frames=626  fps=30  avg=21.82  discont=0  corrupt=0  last_pts=0:00:28.682250719
+[stats] frames=656  fps=30  avg=22.10  discont=0  corrupt=0  last_pts=0:00:29.682351615
+[stats] frames=672  fps=16  avg=21.90  discont=0  corrupt=0  last_pts=0:00:30.215622934
+[stats] frames=672  fps=0  avg=21.21  discont=0  corrupt=0  last_pts=0:00:30.215622934
+[stats] frames=672  fps=0  avg=20.56  discont=0  corrupt=0  last_pts=0:00:30.215622934
+
+[sigint] shutting down
+[jitterbuf] application/x-rtp-jitterbuffer-stats, num-pushed=(guint64)13946, num-lost=(guint64)17, num-late=(guint64)0, num-duplicates=(guint64)0, avg-jitter=(guint64)10011, rtx-count=(guint64)0, rtx-success-count=(guint64)0, rtx-per-packet=(double)0, rtx-rtt=(guint64)0;
+[summary] frames=672  bytes=928972800  discont=0  corrupt=0  elapsed=33.0s  avg_fps=20.35
