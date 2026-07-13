@@ -1,0 +1,899 @@
+\documentclass[12pt]{ai_conquer2026}
+\addbibresource{references.bib}
+
+% Gói bổ sung dùng cho bảng số liệu và ảnh minh hoạ. Nếu lớp tài liệu đã nạp
+% sẵn thì lệnh nạp lại ở đây là vô hại.
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+
+\title{%
+  \begin{center}
+        \Large {AI VIET NAM -- AI Conquer 2026}\\[.5ex]
+        \Huge \textbf{drone-video-link: Đường truyền hình ảnh độ trễ thấp và cổng điều khiển cho drone}\\[.5ex]
+        \large Báo cáo kỹ thuật (hướng Đi làm) --- giải thích từ đầu cho người mới\\[.5ex]
+  \end{center}
+}
+
+% Author --------------------------------------------------------------------
+\posttitle{
+\author{
+\begin{minipage}{\textwidth}
+\centering
+{
+\vspace{-1.5em}
+Học viên: Phong \quad---\quad Định hướng: Embedded Software Engineer
+}\
+\end{minipage}
+}
+}
+\date{}
+
+% Header --------------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\href{https://www.facebook.com/aivietnam.edu.vn}{\textcolor{aivnGreen}{\bfseries AI VIET NAM (AI Conquer 2026)}}}
+\rhead{\href{https://aivietnam.edu.vn/}{\textcolor{aivnGreen}{\bfseries aivietnam.edu.vn}}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{1.0pt}
+\renewcommand{\headrule}{{\color{aivnGreen}\hrule width\headwidth height\headrulewidth \vskip-\headrulewidth}}
+
+\begin{document}
+\maketitle
+\vspace{-5.5em}
+\setlength{\epigraphwidth}{0.6\textwidth}
+
+\section{Tổng quan báo cáo}
+
+Báo cáo này mô tả \textbf{drone-video-link}, một bản mẫu (prototype) phần
+\emph{ground-station link} --- đường liên kết giữa drone và trạm mặt đất --- cho
+một payload camera gắn trên drone. Hệ thống gồm hai nửa chạy song song:
+
+\begin{itemize}
+\item \textbf{Đường truyền hình ảnh (video downlink):} lấy hình từ camera, nén
+      thành H.264, đóng gói RTP rồi gửi qua mạng UDP xuống trạm mặt đất, với mục
+      tiêu \textbf{độ trễ thật thấp}.
+\item \textbf{Cổng MAVLink (telemetry \& control gateway):} nhận dữ liệu bay
+      (độ cao, pin, tư thế\ldots) từ bộ điều khiển bay và gửi lệnh (arm, cất
+      cánh, hạ cánh) lên, có kiểm tra phản hồi và có cơ chế an toàn khi mất liên
+      lạc.
+\end{itemize}
+
+Toàn bộ được xây dựng và \emph{đo đạc} trên Embedded Linux, mô phỏng đúng ngăn
+xếp phần mềm dùng trên máy tính đồng hành (companion computer) Jetson Xavier /
+Orin NX của một airframe thật, nhưng chạy trọn vẹn trên một chiếc laptop: nguồn
+video được giả lập bằng \texttt{videotestsrc}, còn bộ điều khiển bay được giả
+lập bằng \textbf{ArduPilot SITL}. Không cần drone thật.
+
+\begin{aivncodebox}[Đối tượng đọc]
+Báo cáo được viết cho \textbf{người mới hoàn toàn}. Mỗi khái niệm --- codec,
+RTP, jitter buffer, MAVLink\ldots --- đều được giải thích lại từ số không kèm
+một ví dụ hoặc phép so sánh đời thường, trước khi đưa ra số liệu. Bạn không cần
+biết trước gì về video streaming hay drone để đọc hiểu.
+\end{aivncodebox}
+
+\textbf{Vì sao bài toán này đáng làm.} Truyền video thời gian thực từ một vật thể
+bay là một bài toán kỹ thuật cổ điển nhưng đầy cạm bẫy: mạng không dây hay mất
+gói, drone di chuyển nhanh nên độ trễ vài trăm mili-giây là không chấp nhận
+được, và bộ giải mã video có thể \emph{giấu} lỗi khiến phần mềm tưởng mọi thứ
+vẫn ổn trong khi người lái nhìn thấy hình vỡ. Project này không chỉ dựng cho
+video chạy được, mà \textbf{đo} chính xác từng đánh đổi đó bằng công cụ thật.
+
+\textbf{Kết quả nổi bật (tất cả đều đo được, không phỏng đoán).}
+
+\begin{itemize}
+\item Độ trễ pipeline giảm từ \textbf{2288 ms} (cấu hình mặc định) xuống
+      \textbf{7,8 ms} sau khi tinh chỉnh --- và nguyên nhân chính \emph{không}
+      phải B-frame như nhiều tài liệu nói.
+\item Ở mức mất 20\% gói, \textbf{474 gói} biến mất nhưng ứng dụng vẫn nhận
+      148/150 khung hình và cờ báo lỗi của bộ giải mã vẫn bằng \textbf{0} ---
+      bằng chứng cho thấy phải đo mất gói ở \emph{tầng RTP}.
+\item Một gói bị mất làm hỏng hình \textbf{cho tới keyframe kế tiếp}: 29/29 đợt
+      hỏng trên bốn ảnh thử đều kết thúc đúng tại một keyframe.
+\item Cổng MAVLink phát hiện \textbf{đứt liên lạc trong 3 giây} (kiểm thử 7/7),
+      và lệnh \texttt{takeoff 10} arm rồi leo tới 10 m, lặp lại được trên
+      ArduPilot SITL thật.
+\end{itemize}
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents
+\thispagestyle{fancy}
+
+\newpage
+\section{Định nghĩa bài toán}
+
+Phần này chuyển vấn đề thực tế thành hai bài toán kỹ thuật cụ thể, để người đọc
+biết hệ thống nhận gì, tạo ra gì và được đánh giá bằng tiêu chí nào.
+
+\subsection{Bối cảnh}
+
+Một drone quay phim mang theo hai luồng thông tin cần đưa xuống mặt đất: (1)
+\textbf{hình ảnh} để người điều khiển nhìn thấy camera đang thấy gì, và (2)
+\textbf{dữ liệu bay} (telemetry) như độ cao, tốc độ, pin, tư thế. Chiều ngược
+lại, mặt đất cần gửi \textbf{lệnh} lên drone. Cả ba đều đi qua một liên kết vô
+tuyến không hoàn hảo: có độ trễ, có mất gói, đôi khi đứt hẳn.
+
+\subsection{Bài toán 1 --- Đường truyền hình ảnh}
+
+\begin{itemize}
+\item \textbf{Đầu vào:} luồng hình thô từ camera (ở đây: 1280$\times$720, 30 khung
+      hình/giây).
+\item \textbf{Đầu ra:} luồng hình hiển thị được ở trạm mặt đất, kèm các \emph{số
+      đo}: độ trễ, số khung/giây, số gói mất.
+\item \textbf{Loại bài toán:} kỹ thuật truyền thông đa phương tiện thời gian
+      thực (real-time multimedia streaming), không phải học máy.
+\item \textbf{Tiêu chí thành công:} độ trễ pipeline ở mức mili-giây (không phải
+      giây); khi mạng xấu, hệ thống \emph{đo được} mức độ hỏng thay vì im lặng;
+      mọi con số đều tái lập được bằng script trong repo.
+\end{itemize}
+
+\subsection{Bài toán 2 --- Cổng MAVLink}
+
+\begin{itemize}
+\item \textbf{Đầu vào:} các thông điệp MAVLink từ bộ điều khiển bay (heartbeat,
+      vị trí, tư thế, trạng thái pin\ldots).
+\item \textbf{Đầu ra:} nhật ký telemetry đã quy đổi ra đơn vị SI (CSV/JSONL);
+      trạng thái liên kết (còn sống / mất); và kết quả của các lệnh arm / cất
+      cánh / hạ cánh.
+\item \textbf{Loại bài toán:} lập trình giao thức nhị phân + logic an toàn (state
+      machine, watchdog).
+\item \textbf{Tiêu chí thành công:} phát hiện mất liên lạc trong đúng cửa sổ
+      failsafe; mọi lệnh đều được \emph{xác nhận} bằng phản hồi của bộ điều khiển
+      bay; chạy được end-to-end với firmware thật (SITL).
+\end{itemize}
+
+\begin{aivncodebox}[Điểm mấu chốt]
+Trọng tâm của project không phải \emph{làm cho nó chạy} --- video streaming và
+gửi lệnh MAVLink là việc nhiều người làm được. Trọng tâm là \textbf{đo và giải
+thích các đánh đổi}: độ trễ đổi lấy độ mượt, keyframe đổi lấy khả năng hồi phục,
+tin cậy đổi lấy tốc độ. Đó là điều một kỹ sư nhúng thật sự làm hằng ngày.
+\end{aivncodebox}
+
+\section{Các khái niệm nền tảng}
+
+Đây là phần dài nhất và quan trọng nhất với người mới. Nắm được sáu tiểu mục
+dưới đây là đủ để hiểu toàn bộ phần còn lại của báo cáo.
+
+\subsection{Bức tranh tổng thể: một khung hình đi từ camera tới màn hình}
+
+Hãy hình dung một \textbf{dây chuyền lắp ráp}. Một khung hình đi qua từng trạm,
+mỗi trạm làm một việc, rồi chuyển sang trạm sau:
+
+\begin{aivnoutputbox}[Đường đi của một khung hình]
+[Camera]            lay anh tho (raw), rat nang: ~1.3 MB moi khung
+   |
+   v
+[Encoder H.264]     nen lai, chi giu phan thay doi -> nho hon hang chuc lan
+   |
+   v
+[RTP packetizer]    cat luong H.264 thanh cac goi nho vua duong truyen,
+   |                danh so thu tu (sequence number) + dan nhan thoi gian
+   v
+[UDP] ---- mang khong day (co the mat goi, tre, dao thu tu) ----> [UDP]
+                                                                    |
+                                                                    v
+                                                       [Jitter buffer]  sap xep
+                                                                    |    lai goi
+                                                                    v
+                                                       [RTP depacketizer] ghep lai
+                                                                    |
+                                                                    v
+                                                       [Decoder H.264]  giai nen
+                                                                    |
+                                                                    v
+                                                       [Man hinh / ung dung C++]
+\end{aivnoutputbox}
+
+Hai nửa của dây chuyền nằm ở hai nơi khác nhau trong đời thật: nửa bên trái (tới
+UDP) chạy trên \textbf{máy tính đồng hành} gắn trên drone (Jetson); nửa bên phải
+chạy trên \textbf{trạm mặt đất}. \emph{Ranh giới mạng} nằm đúng ở chỗ hai khối
+UDP. Trong project, cả hai chạy trên cùng một máy qua \texttt{127.0.0.1}
+(loopback) để dễ đo.
+
+\subsection{Nén video H.264: I-frame, P-frame, GOP, slice}
+
+Vì sao phải nén? Một khung hình 1280$\times$720 thô nặng khoảng 1,3 MB. Ở 30
+khung/giây, đó là gần 40 MB mỗi giây --- không đường truyền không dây nào chịu
+nổi. Bộ mã hoá (encoder) H.264 nén luồng này xuống còn vài trăm KB/giây bằng một
+ý tưởng đơn giản: \textbf{giữa hai khung liên tiếp, phần lớn điểm ảnh không đổi}.
+
+\begin{itemize}
+\item \textbf{I-frame} (còn gọi \emph{keyframe}): một tấm ảnh hoàn chỉnh, tự giải
+      mã được, không cần tham chiếu khung nào khác. To.
+\item \textbf{P-frame}: chỉ lưu \textbf{phần khác biệt} so với khung trước. Rất
+      nhỏ.
+\item \textbf{GOP} (Group of Pictures): một I-frame và toàn bộ P-frame phụ thuộc
+      vào nó. Tham số \texttt{key-int-max=30} nghĩa là \emph{tối đa 30 khung thì
+      chèn một keyframe} --- ở 30 fps là đúng \textbf{một keyframe mỗi giây}.
+\item \textbf{Slice}: mỗi khung có thể bị cắt thành nhiều \emph{dải ngang} độc
+      lập. Khi bật đa luồng theo kiểu \texttt{tune=zerolatency}, đo được
+      \textbf{11 slice mỗi khung}. Điều này quyết định: mất một gói làm hỏng một
+      \emph{dải}, không phải cả khung hình.
+\end{itemize}
+
+I-frame to hơn P-frame bao nhiêu lần? Đây là tính chất của \emph{nội dung}, không
+phải của H.264. Đo bằng \texttt{gop-stats.sh} trên luồng thật: thanh màu SMPTE
+2,8 lần, quả bóng trên nền đen 3,2 lần, zone-plate động 8,4 lần, pinwheel
+\textbf{15,0 lần}. Càng ít chuyển động thì P-frame càng rỗng, tỉ số càng lớn.
+
+\subsection{Vì sao video dùng UDP chứ không TCP, và RTP thêm gì}
+
+\textbf{TCP} bảo đảm không mất gói và đúng thứ tự bằng cách \emph{truyền lại} gói
+mất và giữ mọi gói sau đó lại chờ. Với video thời gian thực, điều này là tai hoạ:
+một gói của khung \#5 mà đến sau khi khung \#10 đã hiển thị thì \emph{đã vô
+dụng}; tệ hơn, việc chờ nó làm mọi khung sau bị treo --- video đứng hình rồi tua
+nhanh.
+
+Video thời gian thực thà \textbf{mất dữ liệu} còn hơn \textbf{trễ dữ liệu}. Đó
+đúng là hợp đồng của \textbf{UDP}: gửi đi, không hứa hẹn gì. Nhưng UDP trần trụi
+quá --- không thứ tự, không phát hiện mất gói, không nhãn thời gian. Nên người ta
+đặt thêm một header nhỏ tên \textbf{RTP} (Real-time Transport Protocol) vào bên
+trong mỗi gói UDP, mang theo:
+
+\begin{itemize}
+\item \textbf{Sequence number} --- để bên nhận biết gói nào mất, gói nào đến sai
+      thứ tự.
+\item \textbf{Timestamp} --- thời điểm khung được lấy mẫu, để phát lại đúng nhịp.
+\item \textbf{Payload type} --- cho biết đây là H.264 (số 96) hay codec khác.
+\end{itemize}
+
+Câu chốt dễ nhớ: \emph{``UDP nói: tôi không hứa gì. RTP nói: nhưng tôi cho bạn
+biết cái gì đã mất.''} Chính jitter buffer (mục sau) dùng các thông tin RTP này
+để làm việc.
+
+\subsection{GStreamer: pipeline, element, pad, caps}
+
+\textbf{GStreamer} là khung phần mềm đa phương tiện dùng để \emph{ghép} cái dây
+chuyền ở trên. Bốn khái niệm:
+
+\begin{itemize}
+\item \textbf{Element} --- một trạm trong dây chuyền (ví dụ \texttt{x264enc} là
+      bộ mã hoá).
+\item \textbf{Pad} --- cổng của element: \emph{sink pad} là đầu vào, \emph{src
+      pad} là đầu ra (hơi ngược trực giác: ``src'' là chỗ dữ liệu \emph{đi ra}).
+\item \textbf{Caps} (capabilities) --- mô tả dữ liệu qua một pad: định dạng, độ
+      phân giải, framerate. Ví dụ \texttt{video/x-raw,width=1280,height=720}.
+\item \textbf{Pipeline} --- cả dây chuyền cộng với bus báo lỗi và clock đồng bộ.
+\end{itemize}
+
+Ký hiệu \texttt{!} trong lệnh \texttt{gst-launch} nghĩa là ``nối src pad của cái
+bên trái vào sink pad của cái bên phải''. Khi nối, hai element \emph{tự thương
+lượng} định dạng chung; không có định dạng chung thì lỗi \texttt{not-negotiated}.
+
+\begin{aivncodebox}[Một cạm bẫy kinh điển cho người mới]
+Bên nhận \texttt{udpsrc} lấy gói từ mạng chỉ thấy một đống byte, không biết đó là
+H.264 hay rác, nên \textbf{phải khai caps thủ công}, kèm số payload type. Sender
+khai \texttt{pt=96} thì receiver phải khai đúng \texttt{96}. Lệch số $\Rightarrow$
+không nhận được gì và \textbf{không có thông báo lỗi} --- pipeline chạy im lặng,
+màn hình đen. Đây là lỗi ``màn hình đen'' nổi tiếng khi mới học.
+\end{aivncodebox}
+
+\subsection{Jitter buffer: đánh đổi trung tâm của cả project}
+
+Gói UDP đến \textbf{không đều nhịp} (hiện tượng gọi là \emph{jitter}) và có thể
+\textbf{sai thứ tự}. \texttt{rtpjitterbuffer} giữ gói lại một chút, sắp xếp theo
+sequence number, rồi nhả ra đều đặn.
+
+\begin{itemize}
+\item \texttt{latency=200} (mặc định): giữ gói 200 ms. Mượt, chịu được jitter,
+      nhưng \textbf{cộng thẳng 200 ms vào độ trễ}.
+\item \texttt{latency=0}: nhả ngay. Trễ thấp nhất, nhưng gói đến muộn hoặc lệch
+      thứ tự sẽ bị \textbf{vứt bỏ} $\Rightarrow$ giật hình.
+\end{itemize}
+
+Đây là \textbf{đánh đổi trung tâm}: độ trễ đổi lấy độ mượt. Không có đáp án đúng
+tuyệt đối, chỉ có đáp án phù hợp với tình huống. Drone FPV chọn \texttt{latency=0}
+(cần phản xạ nhanh); xem phim trên mạng chọn buffer vài giây (cần mượt). Ở mục
+\ref{sec:latency} và \ref{sec:loss} sẽ thấy cái giá thật của lựa chọn này, đo
+được.
+
+\subsection{MAVLink: heartbeat, message, command, SITL}
+
+\textbf{MAVLink} là một \emph{giao thức nhị phân} để phần mềm nói chuyện với
+drone. Nó không phải một thư viện --- \texttt{pymavlink} chỉ là một hiện thực của
+nó. Header rất nhỏ (khoảng 12 byte), có checksum, chạy trên bất kỳ đường truyền
+nào (UART, UDP, radio), nên code viết một lần dùng được ở mọi nơi.
+
+\begin{itemize}
+\item \textbf{Heartbeat:} mọi thành phần phát ``nhịp tim'' ở \textbf{1 Hz}. Quy
+      ước ngành: \textbf{mất 3 nhịp liên tiếp ($\approx$3 giây) coi như đứt
+      link}, và drone phải kích hoạt failsafe (thường là bay về điểm cất cánh).
+\item \textbf{Message} (thông điệp): dữ liệu phát liên tục một chiều, không ai
+      xác nhận --- ví dụ tư thế, vị trí. Cứ chảy về đều đều.
+\item \textbf{Command} (lệnh): gửi lên và bộ điều khiển bay \textbf{phải trả lời}
+      bằng một \texttt{COMMAND\_ACK}. Bắn lệnh rồi cho là xong (fire-and-forget)
+      là sai --- FC có thể từ chối, và ta cần biết vì sao.
+\item \textbf{SITL} (Software In The Loop): chính firmware ArduPilot biên dịch cho
+      máy tính x86 thay vì cho drone. Nó chạy đầy đủ bộ lọc trạng thái (EKF), bộ
+      điều khiển, kiểm tra trước khi arm và mô phỏng vật lý. Nghĩa là
+      \emph{giao thức, thời gian, hành vi từ chối lệnh --- tất cả đều thật}. Đây
+      là quy trình chuẩn của ngành, không phải ``đồ chơi vì thiếu drone''.
+\end{itemize}
+
+\section{Kiến trúc hệ thống}
+
+Hệ thống gồm hai luồng dữ liệu độc lập, chia sẻ chung một câu chuyện ``đường liên
+kết cho drone''. Chúng không cần tích hợp code với nhau.
+
+\subsection{Luồng Video}
+
+\begin{aivnoutputbox}[Luong du lieu - Video]
+[videotestsrc]   nguon gia lap, thay cho camera CSI (I420, 1280x720, 30fps)
+   |
+[timeoverlay]    in timestamp len hinh de do latency bang mat
+   |
+[videoconvert]   doi color format cho khop encoder
+   |
+[x264enc]        nen H.264, tune=zerolatency (lookahead=0 + sliced threads)
+   |
+[rtph264pay]     cat thanh goi RTP, them seq number + timestamp
+   |
+[udpsink] ==> UDP 127.0.0.1:5000 ==> [udpsrc]   (tc netem chen loss/jitter)
+                                         |
+                                    [rtpjitterbuffer]   latency=0 de giam tre
+                                         |
+                                    [rtph264depay]   ghep RTP lai thanh H.264
+                                         |
+                                    [avdec_h264]     giai nen
+                                         |
+                                    [appsink]   ==> receiver.cpp: dem frame, doc PTS, in stats
+\end{aivnoutputbox}
+
+Mọi thứ bên trái \texttt{udpsink} là companion computer trên drone; mọi thứ bên
+phải \texttt{udpsrc} là trạm mặt đất. \texttt{appsink} là điểm mấu chốt: nó
+\emph{đưa từng khung hình vào tay code C++} thay vì chỉ vẽ lên màn hình --- đây
+cũng là chỗ ngoài đời cắm AI inference (đẩy khung sang TensorRT vẽ bounding box).
+
+\subsection{Luồng MAVLink}
+
+\begin{aivnoutputbox}[Luong du lieu - MAVLink]
+[ArduPilot SITL]  == UDP 14550 ==>  [gateway.py]
+  (gia lap FC)      MAVLink v2         |
+       ^                               +--> watchdog: mat heartbeat 3s -> LINK LOST
+       |                               +--> telemetry.csv / telemetry.jsonl
+       +---- COMMAND_LONG ------------ +--> MQTT: topic drone/telemetry  [tuy chon]
+       |     (arm/takeoff/land)        |
+       +---- COMMAND_ACK <-------------+  gateway doc ACK, khong "ban roi quen"
+\end{aivnoutputbox}
+
+MAVLink là giao thức \textbf{hai chiều bất đối xứng}: telemetry được FC phát liên
+tục (streaming), còn lệnh theo mô hình gửi--chờ--xác nhận (request/ack). Code
+được chia đúng theo đường nối đó.
+
+\section{Thành phần 1 --- Đường truyền video H.264/RTP}
+
+Nửa video gồm một \emph{sender} (script \texttt{gst-launch}) và một \emph{receiver}
+C++ dùng GStreamer C API. Receiver không chỉ hiển thị mà còn \emph{đếm}: số khung,
+số khung/giây, và --- quan trọng nhất --- số gói mất đọc từ jitter buffer.
+
+\begin{aivncodebox}[Vì sao receiver là C++ và \texttt{appsink} làm gì]
+\texttt{autovideosink} vẽ khung lên màn hình rồi thôi. \texttt{appsink} thì trao
+từng khung cho code: callback \texttt{new\_sample} được gọi mỗi khi có khung mới,
+code lấy con trỏ vào vùng điểm ảnh, đọc timestamp, rồi \textbf{bắt buộc giải
+phóng} bộ nhớ (\texttt{unref}). Quên một lần \texttt{unref} là rò rỉ bộ nhớ
+(memory leak), RAM tăng dần cho tới khi tiến trình bị hệ điều hành kết liễu. Đây
+chính là loại lỗi bộ nhớ mà kỹ sư nhúng phải gỡ trong đời thật.
+\end{aivncodebox}
+
+Một chi tiết đồng bộ hoá đáng nói: callback \texttt{new\_sample} chạy trên
+\emph{streaming thread}, còn vòng lặp in thống kê chạy mỗi giây trên một luồng
+khác. Vì thế các bộ đếm trong \texttt{receiver.cpp} dùng \texttt{std::atomic} để
+hai luồng đọc/ghi an toàn.
+
+\section{Thực nghiệm 1 --- Đo độ trễ pipeline}
+\label{sec:latency}
+
+\textbf{Cách đo.} Không tự viết code đo. GStreamer có sẵn bộ theo dõi (tracer)
+bật bằng một biến môi trường, in ra độ trễ của cả pipeline \emph{và} của từng
+element để quy trách nhiệm cho đúng thủ phạm:
+
+\begin{aivnoutputbox}[Bật tracer đo độ trễ của GStreamer]
+GST_TRACERS="latency(flags=pipeline+element)" gst-launch-1.0 ...
+\end{aivnoutputbox}
+
+Mọi số dưới đây là \textbf{trung vị} của 150 khung (bỏ 15 khung đầu làm nóng
+máy), trên WSL2 Ubuntu 22.04, 16 lõi, GStreamer 1.20.3, luồng
+1280$\times$720@30, 2 Mbit/s.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}clccc@{}}
+\toprule
+\# & Cấu hình & Pipeline & x264enc & Jitter buffer \\
+\midrule
+1 & mặc định (\texttt{latency=200}, \texttt{sync=true}) & \textbf{2288 ms} & 2067 ms & 218 ms \\
+2 & \texttt{+ tune=zerolatency speed-preset=ultrafast}  & \textbf{223 ms}  & 4,2 ms  & 216 ms \\
+3 & \texttt{+ rtpjitterbuffer latency=0}                & \textbf{23 ms}   & 4,2 ms  & 15,5 ms \\
+4 & \texttt{+ sink sync=false}                          & \textbf{7,8 ms}  & 4,1 ms  & 0,8 ms \\
+\bottomrule
+\end{tabular}
+\caption{Bốn cấu hình, độ trễ giảm dần từ 2288 ms xuống 7,8 ms.}
+\end{table}
+
+Đọc từng bước:
+
+\begin{itemize}
+\item \textbf{1$\to$2 (encoder, $-$2064 ms):} thắng lợi lớn nhất, đến \emph{toàn
+      bộ} từ bộ mã hoá. Chi tiết ở dưới.
+\item \textbf{2$\to$3 (jitter buffer, $-$200 ms):} đúng bằng \texttt{latency} đã
+      hạ. Đây là cái giá phải trả \emph{trên mọi gói}, dù mạng có xấu hay không.
+\item \textbf{3$\to$4 (sink, $-$15 ms):} tắt việc sink chờ đúng nhãn thời gian
+      mới hiển thị. Vì không có audio để đồng bộ, chờ đó là trễ vô ích.
+\end{itemize}
+
+\subsection{Thủ phạm thật trong bộ mã hoá --- và vì sao \emph{không} phải B-frame}
+
+Tách riêng bộ mã hoá (giữ jitter buffer = 0 và tắt sync), chỉ đổi dòng encoder:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Cấu hình encoder & x264enc (trung vị) & quy ra khung @30fps \\
+\midrule
+\texttt{x264enc} (mặc định)              & 2067 ms & 62 \\
+\texttt{+ sliced-threads=true}           & 1340 ms & 40 \\
+\texttt{+ rc-lookahead=0}                & 734 ms  & 22 \\
+\texttt{+ speed-preset=ultrafast}        & 734 ms  & 22 \\
+\texttt{+ tune=zerolatency}              & 5,8 ms  & 0,2 \\
+\texttt{+ tune=zerolatency ultrafast}    & 4,2 ms  & 0,1 \\
+\bottomrule
+\end{tabular}
+\caption{Hai nguồn trễ độc lập trong encoder cộng lại: 1340 + 734 $\approx$ 2067 ms.}
+\end{table}
+
+Nhiều bài viết nói \texttt{tune=zerolatency} nhanh vì nó \emph{tắt B-frame} (loại
+khung phải chờ khung tương lai). \textbf{Điều này sai với element này:}
+\texttt{x264enc} của GStreamer mặc định \texttt{bframes=0} --- không có B-frame
+nào để mà tắt. Kiểm tra một dòng: \texttt{gst-inspect-1.0 x264enc | grep bframes}.
+Hai thủ phạm thật là:
+
+\begin{enumerate}
+\item \textbf{Lookahead} (\texttt{rc-lookahead}, mặc định 40): encoder giữ lại 40
+      khung để bộ điều khiển bitrate ``nhìn trước'' cảnh sắp tới rồi mới quyết
+      định tiêu bao nhiêu bit cho khung hiện tại. Cái giá là \textbf{đúng 40 khung
+      độ trễ} --- đo được 39,4 khung khi ép chạy 1 luồng.
+\item \textbf{Đa luồng theo khung:} mỗi luồng mã hoá một khung khác nhau cùng
+      lúc, nên khung \emph{N} chưa ra được cho tới khi luồng giữ nó xong việc. Đo
+      được: 4 luồng $\to$ 10 khung trễ, 8 luồng $\to$ 14, tự động trên 16 lõi
+      $\to$ 28. \texttt{tune=zerolatency} chuyển sang \emph{sliced threads} (chia
+      một khung cho nhiều luồng) nên độ trễ này biến mất.
+\end{enumerate}
+
+\begin{aivncodebox}[Bài học đo đạc]
+\texttt{speed-preset=ultrafast} một mình chỉ hạ được xuống 734 ms và \textbf{kẹt
+ở đó}, vì nó chỉ đưa lookahead về 0 chứ không đụng tới đa luồng theo khung. Phải
+có \texttt{tune=zerolatency} mới xử lý cả hai. Đây là kiểu chi tiết mà chỉ khi
+\emph{đo tách bạch} mới thấy được, còn đọc tài liệu thì dễ kết luận sai.
+\end{aivncodebox}
+
+\section{Thực nghiệm 2 --- Mất gói và lan truyền lỗi}
+\label{sec:loss}
+
+Câu hỏi phỏng vấn kinh điển: \emph{vì sao mất \textbf{một} gói UDP lại làm hỏng
+hình \textbf{cả giây}?} Project trả lời bằng thí nghiệm, dùng \texttt{tc netem}
+để cố ý làm mạng xấu.
+
+\begin{aivncodebox}[\texttt{tc netem} --- vừa giả lập mạng xấu vừa là dụng cụ đo]
+\texttt{tc} (traffic control) là công cụ của nhân Linux để định hình lưu lượng;
+\texttt{netem} là module giả lập mạng. Ví dụ \texttt{netem loss 2\% delay 20ms
+5ms} = mất 2\% gói, trễ 20 ms, jitter $\pm$5 ms. Quan trọng: \texttt{tc -s qdisc
+show} còn \emph{in ra số gói đã bị đánh rơi} --- đây là \textbf{sự thật của nhân},
+dùng để đối chiếu khi một bộ đếm khác nói dối.
+\end{aivncodebox}
+
+\subsection{Cơ chế lan truyền lỗi}
+
+Với GOP 30 khung (I-frame ở \#0 và \#30):
+
+\begin{enumerate}
+\item Khung \#5 mất một slice $\to$ hình vỡ ở dải đó.
+\item Khung \#6 là P-frame: nó nói ``giống \#5, thêm chút thay đổi''. Nhưng \#5
+      đã sai $\to$ \#6 sai theo.
+\item Lỗi \textbf{lan truyền} qua \#7, \#8\ldots vì P-frame chép nguyên khối sai
+      từ khung trước.
+\item Đến khung \#30 --- một I-frame mới, mã hoá không tham chiếu ai $\to$ hình
+      \textbf{hồi phục hoàn toàn}.
+\end{enumerate}
+
+Đây là điều được \emph{đo}, không suy luận. So từng điểm ảnh với luồng gốc:
+\textbf{29/29 đợt hỏng} (trên bốn ảnh thử) kết thúc \emph{đúng} tại một keyframe;
+khi tự chọn gói để xoá thay vì để netem bắn ngẫu nhiên thì là \textbf{36/36}. Sai
+lệch \emph{không phai dần} mà phẳng lì suốt cả GOP rồi biến mất:
+
+\begin{aivnoutputbox}[Sai lech trung binh so voi luong goc (thang 0..255)]
+khung 12..29 : ~22.6   (phang, khong giam)
+khung 30     :  0.336  <- IDR moi, hoi phuc
+khung 60     :  0.000  <- IDR sach, trung khit tung bit
+\end{aivnoutputbox}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.48\textwidth]{../../video/results/img/01-clean.png}\hfill
+\includegraphics[width=0.48\textwidth]{../../video/results/img/02-corrupt.png}
+\caption{Trái: khung \#29 như được gửi đi. Phải: khung \#29 như nhận được --- một
+gói của keyframe GOP này đã mất từ 29 khung trước, hai slice (hai dải ngang)
+không bao giờ tới, và mọi khung kể từ đó chép cái lỗ đó tiếp về sau.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.48\textwidth]{../../video/results/img/03-recovered.png}
+\caption{Khung \#30 --- keyframe kế tiếp. Mã hoá từ số không nên không nợ khung
+trước điều gì; các dải hỏng biến mất, hình hồi phục.}
+\end{figure}
+
+\subsection{Dụng cụ đo nào nói thật, dụng cụ nào nói dối}
+
+Đây là phát hiện hữu ích nhất của cả thí nghiệm. Bộ giải mã \texttt{avdec\_h264}
+\emph{che giấu} slice bị mất trong im lặng: nó dựng lại một khung trông
+\textbf{giống hệt} một khung tốt dưới con mắt của phần mềm.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+netem loss & RTP nhận & RTP mất & khung giải mã & DISCONT & CORRUPT \\
+\midrule
+0\%  & 2362 & 0   & 150 & 0 & 0 \\
+2\%  & 2310 & 45  & 150 & 0 & 0 \\
+5\%  & 2238 & 118 & 150 & 0 & 0 \\
+10\% & 2132 & 233 & 150 & 0 & 0 \\
+20\% & 1884 & 474 & 148 & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Ở 20\% mất gói, 474 gói không bao giờ tới, ứng dụng vẫn nhận 148/150
+khung và \emph{không cờ lỗi nào} được bật.}
+\end{table}
+
+\begin{aivncodebox}[Hệ quả thiết kế quan trọng nhất của project]
+Nếu trạm mặt đất muốn biết video có đáng tin hay không, nó \textbf{phải đếm ở
+tầng RTP} (thuộc tính \texttt{stats} $\to$ \texttt{num-lost} của
+\texttt{rtpjitterbuffer}). Không có gì phía \emph{sau} bộ giải mã nói cho bạn
+biết. Một đèn ``video khoẻ mạnh'' dựng trên số khung hay cờ giải mã sẽ báo xanh
+trong khi người lái nhìn thấy hình vỡ nát. Chính vì thế \texttt{receiver.cpp}
+được mở rộng để phát \texttt{num-lost} mỗi giây, và dashboard theo dõi đúng con
+số đó.
+\end{aivncodebox}
+
+Một lưu ý về sự trung thực của dụng cụ: \texttt{num-lost} \emph{trùng khít} với
+\texttt{tc} khi mạng chỉ mất gói (86 = 86), nhưng \textbf{vọt lên} khi mạng đảo
+thứ tự gói --- nó đếm \emph{số lần phát hiện khoảng trống}, không phải \emph{số
+gói không tới}. Một bộ đếm chưa được đối chiếu với một bộ đếm độc lập thì chưa
+phải là số liệu.
+
+\subsection{Cái giá thật của \texttt{latency=0}}
+
+Ở mục \ref{sec:latency}, \texttt{latency=0} tiết kiệm 200 ms. Đây là hoá đơn. Cho
+mạng jitter $\pm$5 ms mà \textbf{không mất gói nào}:
+
+\begin{aivnoutputbox}[netem delay 20ms 5ms, loss 0\%]
+tc danh roi        : 0        (mang khong mat goi nao)
+num-late           : 3495     (goi den "muon" theo jitter buffer)
+khung giai ma duoc : 67 / 300
+\end{aivnoutputbox}
+
+Nhân không mất gì cả, nhưng jitter buffer sâu bằng 0 vứt bỏ ba phần tư luồng đã
+đến nơi đầy đủ, vì mỗi gói bị trễ ngẫu nhiên làm đảo thứ tự và buffer \emph{không
+có bộ nhớ} để chứa gói đến sớm. Bật \texttt{latency=200} lên thì giải mã được
+270--300/300. Nói cách khác: \textbf{200 ms độ trễ mua lấy khoảng cách giữa 67 và
+300 khung}. Câu chốt: \emph{\texttt{latency=0} không chịu nổi một mạng; nó chỉ
+chịu nổi một sợi dây}.
+
+\subsection{Keyframe hay P-frame: mất slice nào tệ hơn?}
+
+Tệ hơn \textbf{5,8 lần} nếu mất slice của keyframe --- nhưng không vì lý do người
+ta hay nói. Xoá đúng một slice NAL rồi giải mã (không dùng netem, để loại bỏ ngẫu
+nhiên):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Nạn nhân & Số khung hỏng & Sai lệch tại khung trúng & Khung tệ nhất \\
+\midrule
+một slice của IDR (khung 30) & 30..59 (mọi lần) & \textbf{10,69} & 24,31 \\
+một slice của P (khung 15)   & 15..29 (mọi lần) & \textbf{1,85}  & 2,65 \\
+\bottomrule
+\end{tabular}
+\caption{Thang 0..255. Cả hai điều rút ra đều ngược trực giác.}
+\end{table}
+
+\begin{itemize}
+\item \textbf{Thời gian hỏng không phụ thuộc loại khung} --- nó chỉ là
+      \emph{khoảng cách tới keyframe kế tiếp}. IDR ở khung 30 tốn 30 khung; P ở
+      khung 15 tốn 15 khung; mất slice ở khung 29 chỉ hỏng \emph{một} khung.
+\item \textbf{Biên độ mới phụ thuộc loại khung, và quyết định ngay tại khung
+      trúng.} Che một dải \emph{intra} (của keyframe) là việc khó --- decoder
+      không có gì để chép từ đó. Toàn bộ 5,8 lần đã có mặt ngay ở khung đầu tiên;
+      tích luỹ suốt phần còn lại của GOP chỉ cộng thêm 3\%.
+\end{itemize}
+
+\textbf{Hệ quả thiết kế:} giảm \texttt{key-int-max} $\Rightarrow$ hồi phục nhanh
+hơn nhưng tốn bitrate hơn (I-frame to). Đây là một đánh đổi thật mà kỹ sư video
+chọn hằng ngày.
+
+\subsection{Câu trả lời ``sách giáo khoa'' là sai}
+
+Lời giải phổ biến: một gói mất rơi vào một khung ngẫu nhiên đều, nên trung bình
+hỏng nửa GOP --- 15,5 khung. Nhưng gói mất không rơi đều theo \emph{khung}, nó
+rơi đều theo \emph{gói}, mà keyframe chiếm \textbf{15\% số gói} (to gấp 15 lần
+P-frame). Tính theo phân bố gói thật: \textbf{17,6 khung}, không phải 15,5. Đo
+thực tế còn cao hơn, trung bình \textbf{24,1 khung} ($\approx$803 ms) cho mỗi GOP
+bị trúng, vì ở tỉ lệ mất gói thật một GOP hỏng thường bị trúng nhiều hơn một lần.
+
+\section{Thành phần 2 --- Cổng MAVLink (telemetry \& control)}
+
+\subsection{Watchdog --- logic an toàn bay}
+
+Mất heartbeat của trạm mặt đất là thứ kích hoạt failsafe của máy bay thật.
+Ngưỡng mặc định của ArduPilot khoảng 3 giây (ba nhịp 1 Hz bị lỡ), nên gateway báo
+mất link trên cùng ngân sách đó:
+
+\begin{aivnoutputbox}[monitor phat hien dut link]
+  hb#1    STABILIZE disarmed  alt 0.0m  12.6V
+  hb#2    STABILIZE disarmed  alt 0.0m  12.6V
+  hb#3    STABILIZE disarmed  alt 0.0m  12.6V
+*** LINK LOST *** no heartbeat for 3.0s
+\end{aivnoutputbox}
+
+\texttt{watchdog.py} là một máy trạng thái nhỏ, kích hoạt theo cạnh
+(edge-triggered): callback ``mất'' / ``phục hồi'' chỉ bắn \emph{đúng một lần} mỗi
+lần chuyển trạng thái. Nó nhận một \emph{clock tiêm được} nên ngưỡng 3 giây được
+kiểm thử \textbf{chính xác mà không cần ngủ 3 giây thật} --- 7/7 test, gồm cả
+trường hợp biên (khoảng lặng \emph{đúng bằng} ngưỡng thì chưa coi là mất).
+
+\subsection{Bẫy đơn vị --- MAVLink gửi số nguyên đã nhân tỉ lệ}
+
+Để tiết kiệm băng thông, MAVLink không gửi số thực mà gửi số nguyên đã scale. Đổi
+sai là log ra ``rác hợp lý'' mà không hề báo lỗi:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Trường & Trên đường truyền & Đổi ra \\
+\midrule
+vĩ độ / kinh độ (\texttt{GLOBAL\_POSITION\_INT}) & \texttt{degE7} (int32) & $\div 10^7$ $\to$ độ \\
+độ cao & mm (int32) & $\div 1000$ $\to$ mét \\
+roll / pitch / yaw (\texttt{ATTITUDE}) & radian & $\times 180/\pi$ $\to$ độ \\
+điện áp pin (\texttt{SYS\_STATUS}) & mV & $\div 1000$ $\to$ volt \\
+\bottomrule
+\end{tabular}
+\caption{\texttt{alt} là độ cao so với mực nước biển; \texttt{relative\_alt} là
+so với điểm cất cánh. Kiểm tra ``cất cánh 10 m'' phải nhìn \texttt{relative\_alt}.}
+\end{table}
+
+Parser gộp mọi thông điệp vào \emph{một} snapshot đang tiến hoá, nên một dòng log
+mô tả trọn vẹn trạng thái máy bay dù vị trí, tư thế, pin đến từ các thông điệp
+khác nhau.
+
+\subsection{Lệnh được xác nhận, và đúng thứ tự}
+
+Trình tự arm $\to$ takeoff của ArduPilot, dừng ngay ở bước đầu tiên bị từ chối:
+
+\begin{aivnoutputbox}[Trinh tu takeoff]
+cho GPS 3D fix + EKF  ->  GUIDED  ->  arm (thu lai qua cua so pre-arm)  ->  NAV_TAKEOFF
+\end{aivnoutputbox}
+
+Ở mode \texttt{GUIDED}, FC mới nghe lệnh từ phần mềm. Arm bị \emph{từ chối} nếu
+EKF chưa hội tụ hoặc chưa có GPS --- đây là \emph{tính năng an toàn}, không phải
+bug. Trên SITL thật, \texttt{takeoff 10} arm và leo tới 10 m, lặp lại được qua
+nhiều lần khởi động lạnh.
+
+\begin{aivncodebox}[Vì sao kiểm thử với SITL thật lại quan trọng]
+\texttt{mock\_fc.py} (FC giả) và gateway chung một tác giả, một cách hiểu spec,
+nên một hiểu lầm chung sẽ qua được cả hai --- không phải kiểm chứng độc lập. SITL
+bắt được \textbf{hai lỗi} mà mock giấu: (1) ArduPilot \emph{không} stream telemetry
+nếu chưa được yêu cầu (\texttt{REQUEST\_DATA\_STREAM}); (2) bit sức khoẻ cảm biến
+xanh \emph{trước} khi thật sự arm được, nên arm một lần là thua cuộc đua. Cả hai
+đã sửa. Đây là minh chứng cho giá trị của việc kiểm thử trên một hiện thực độc
+lập.
+\end{aivncodebox}
+
+\section{Thành phần 3 --- Dashboard trực quan thời gian thực}
+
+Một trang web đơn hiển thị \emph{cả hai} nửa của liên kết cùng lúc: kênh video
+(fps, gói mất) và kênh MAVLink (tư thế, độ cao, pin, mode, trạng thái link). Nó
+đọc \emph{đúng} dữ liệu mà phần còn lại của repo sinh ra --- dòng \texttt{[stats]}
+của receiver C++ và \texttt{telemetry.jsonl} của gateway --- nên không có hiện
+thực thứ hai bị lệch.
+
+\begin{itemize}
+\item \textbf{Máy chủ (\texttt{server.py}):} HTTP thuần thư viện chuẩn, đẩy sự
+      kiện xuống trình duyệt bằng \textbf{Server-Sent Events} (SSE) --- một chiều,
+      trình duyệt tự kết nối lại, không cần WebSocket.
+\item \textbf{Video nhúng trong dashboard:} một pipeline thứ hai giải mã luồng
+      RTP, chuyển thành \textbf{MJPEG} (chuỗi ảnh JPEG nối tiếp qua HTTP
+      \texttt{multipart/x-mixed-replace}) và nhúng vào thẻ \texttt{<img>}. Người
+      xem thấy \emph{điểm ảnh thật đang chuyển động}, và chúng \emph{vỡ ra} khi
+      bơm mất gói. Đo được: khung MJPEG 480$\times$270, khoảng 30 khung/giây
+      (91 khung JPEG trong 3 giây).
+\item \textbf{Chống tranh chấp cổng:} sender dùng một \texttt{tee} để nhân đôi
+      luồng RTP ra hai cổng UDP (5000 cho receiver thống kê, 5001 cho pipeline
+      MJPEG), nên hai bên đọc cùng luồng mà không giành nhau một cổng.
+\end{itemize}
+
+\begin{aivncodebox}[Sự trung thực trên kênh video của dashboard]
+Đèn mất gói trên dashboard là \texttt{Gói mất $\cdot$ RTP}, đọc trực tiếp từ
+\texttt{num-lost}. Ngay cạnh nó là cờ \texttt{corrupt} của bộ giải mã, và nó
+\textbf{luôn bằng 0 một cách có chủ đích} --- đúng như thực nghiệm 2 đã chứng
+minh. Dashboard cố tình hiển thị cả hai để cho thấy: chỉ có bộ đếm tầng RTP mới
+thật sự động đậy khi link xấu.
+\end{aivncodebox}
+
+\section{Công cụ và công nghệ sử dụng}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+\toprule
+Công nghệ & Vai trò trong project & Vì sao \\
+\midrule
+GStreamer & dựng cả pipeline gửi/nhận video & chuẩn công nghiệp, chạy được trên Jetson \\
+\texttt{x264enc} & mã hoá H.264 phần mềm & bản mẫu trên PC; đổi sang NVENC trên Jetson \\
+C++17 + CMake & receiver dùng GStreamer C API & hiệu năng, quản lý bộ nhớ tường minh \\
+\texttt{tc netem} & giả lập mạng xấu \emph{và} đo gói rơi & sự thật của nhân Linux \\
+\texttt{GST\_TRACERS} & đo độ trễ từng element & công cụ kỹ sư GStreamer thật dùng \\
+pymavlink & nói giao thức MAVLink & hiện thực tham chiếu, phổ biến \\
+ArduPilot SITL & bộ điều khiển bay giả lập & firmware thật, kiểm chứng độc lập \\
+Python (stdlib) + SSE & máy chủ dashboard & không phụ thuộc ngoài, đẩy real-time \\
+MJPEG & nhúng video vào trang web & đơn giản, không cần plugin \\
+MQTT (tuỳ chọn) & đẩy telemetry lên broker & tích hợp hệ thống lớn hơn \\
+\bottomrule
+\end{tabularx}
+\caption{Mỗi công nghệ đi kèm lý do lựa chọn, không chỉ liệt kê tên.}
+\end{table}
+
+\begin{aivncodebox}[Ánh xạ sang phần cứng thật (Jetson Orin NX)]
+Trên board thật, \texttt{videotestsrc} $\to$ \texttt{nvarguscamerasrc} (camera
+CSI), \texttt{x264enc} $\to$ \texttt{nvv4l2h264enc} (mã hoá bằng phần cứng NVENC),
+\texttt{avdec\_h264} $\to$ \texttt{nvv4l2decoder}. Nhưng \texttt{rtph264pay} /
+\texttt{udpsink} / \texttt{rtpjitterbuffer} / receiver C++ \textbf{giữ nguyên
+không đổi}. Học pipeline trên PC là học đúng thứ cần học --- kiến trúc không đổi,
+chỉ hai element mã hoá/giải mã được thay bằng bản chạy trên phần cứng.
+\end{aivncodebox}
+
+\section{Cấu trúc mã nguồn và hướng dẫn chạy}
+
+\begin{aivnoutputbox}[Cau truc thu muc]
+drone-video-link/
+|-- README.md               mat tien tieng Anh cho nha tuyen dung
+|-- docs/                   so tay ky thuat tieng Viet
+|   |-- 04-CONCEPTS.md       giai thich moi khai niem tu dau
+|   |-- ...
+|-- video/                  nua Video (Ngay 1)
+|   |-- src/receiver.cpp     app C++ dung GStreamer C API + appsink
+|   |-- scripts/            sender.sh, netem.sh, measure-latency.sh, ...
+|   |-- results/            latency.md, packet-loss.md, img/*.png  <- so lieu do
+|   |-- CMakeLists.txt
+|-- mavlink/                nua MAVLink (Ngay 2)
+|   |-- gateway/            connection, watchdog, telemetry, commands, cli
+|   |-- scripts/            run-sitl.sh, mock_fc.py
+|   |-- tests/test_watchdog.py   7 test failsafe
+|-- dashboard/              trang web truc quan thoi gian thuc
+    |-- server.py  index.html  demo_flight.py  run.sh  stop.sh  loss.sh
+\end{aivnoutputbox}
+
+Chạy lại từng phần:
+
+\begin{aivncodebox}[Các câu lệnh hướng dẫn]
+\begin{python}
+# 1) Do do tre pipeline
+cd video && cmake -B build && cmake --build build
+./scripts/measure-latency.sh 150
+
+# 2) Thi nghiem mat goi (can quyen root cho tc netem)
+sudo bash scripts/packet-loss.sh
+
+# 3) Cong MAVLink: mot cua so chay FC (SITL hoac mock), mot cua so chay gateway
+python3 scripts/mock_fc.py
+python3 -m gateway.cli takeoff 10
+
+# 4) Dashboard truc quan: mo http://localhost:8090/
+wsl -d Ubuntu-22.04 bash dashboard/run.sh
+\end{python}
+\end{aivncodebox}
+
+Nửa video \emph{không} cần huấn luyện lại mô hình --- nó không phải project học
+máy. Người đọc chỉ cần build receiver một lần rồi chạy các script đo. Mọi số liệu
+trong báo cáo đều tái lập được bằng đúng các lệnh trên.
+
+\section{Phân tích lỗi và hạn chế}
+
+Một báo cáo kỹ thuật trung thực phải nói rõ giới hạn của chính nó. Dưới đây là
+những điều project \emph{chưa} làm, và những điều tác giả đã \emph{làm sai rồi
+sửa} --- vì sai rồi hiểu vì sao sai là kết quả có giá trị nhất.
+
+\subsection{Giới hạn của thí nghiệm}
+
+\begin{itemize}
+\item \textbf{netem sinh lỗi độc lập từng gói.} Sóng vô tuyến thật mất gói theo
+      \emph{chùm} (burst): mất 20 gói liên tiếp khác hẳn mất 20 gói rải rác. Toàn
+      bộ kết quả mất gói ở đây giả định lỗi độc lập, vì đó là thứ
+      \texttt{netem loss X\%} tạo ra. Phải nói thẳng điều này nếu bị hỏi.
+\item \textbf{Chưa có radio thật.} Nửa MAVLink được kiểm chứng trên SITL và mock,
+      đều qua loopback. Độ trễ và mất gói của một radio telemetry thật chưa được
+      thử nghiệm ở nửa này (nửa video thì có đo mất gói, trên đường RTP).
+\item \textbf{Đây là ``pipeline latency'', không phải ``glass-to-glass''.} Số
+      7,8 ms không bao gồm thời gian phơi sáng của cảm biến camera, đệm của màn
+      hình, và mạng thật. Không so sánh được với số đo bằng cách quay hai màn
+      hình.
+\item \textbf{MAVLink còn hẹp về tính năng:} chưa có giao thức nhiệm vụ/waypoint,
+      chưa có geofence, và \texttt{takeoff} mới leo rồi giữ độ cao chứ chưa có
+      trình tự hạ cánh tại điểm hay bay về nhà (RTL).
+\end{itemize}
+
+\subsection{Những điều đã làm sai rồi sửa}
+
+\begin{itemize}
+\item \textbf{``Cờ \texttt{DISCONT} là dấu vân tay của mất gói.''} Sai. Một chú
+      thích như vậy nằm trong \texttt{receiver.cpp} suốt một ngày, sống sót vì nó
+      cho ra con số (0 trên link sạch) đúng như mong đợi --- rồi vẫn cho ra 0 khi
+      hai phần ba luồng không tới. \emph{Một bộ đếm đồng ý với bạn chưa phải là
+      bằng chứng; phải cho nó gặp trường hợp mà lẽ ra nó phải nhúc nhích.}
+\item \textbf{``Ảnh tĩnh giấu được thiệt hại.''} Sai hai lần. Lần chạy lại
+      ``thêm chuyển động'' thực ra đã thay một ảnh tĩnh này bằng một ảnh tĩnh
+      khác (pinwheel \emph{không} hề chuyển động --- 0,0\% điểm ảnh đổi). Kết quả
+      đổi không phải vì chuyển động.
+\item \textbf{``Hai lần chạy cùng pipeline là so sánh được.''} Sai ---
+      \texttt{x264enc} không tái lập được từng bit (mã hoá cùng đầu vào hai lần
+      cho hai file khác nhau). Cả thí nghiệm điểm ảnh phải ``đóng băng'' bitstream
+      trước, nếu không đã cho ra kết luận sai một cách tự tin.
+\end{itemize}
+
+\section{Kết luận và hướng phát triển}
+
+\textbf{Project đã làm được gì.} Xây dựng và \emph{đo đạc} một đường liên kết
+drone--mặt đất hai nửa: (1) đường truyền hình ảnh H.264/RTP/UDP hạ độ trễ từ
+2288 ms xuống 7,8 ms và định lượng chính xác cơ chế lan truyền lỗi khi mất gói;
+(2) cổng MAVLink có watchdog failsafe 3 giây, telemetry quy đổi SI, và lệnh
+arm/takeoff/land được xác nhận, chạy end-to-end trên ArduPilot SITL thật; và (3)
+một dashboard thời gian thực gộp cả hai. Điểm khác biệt không nằm ở chỗ ``chạy
+được'' mà ở chỗ \emph{mọi con số đều đo được, tái lập được, và có script kèm
+theo}.
+
+\textbf{Bài học lớn nhất.} Bộ giải mã video có thể \emph{che giấu} mất gói khiến
+phần mềm tưởng mọi thứ vẫn ổn; muốn biết sự thật phải đo ở đúng tầng (RTP), và
+phải đối chiếu mọi bộ đếm với một nguồn độc lập trước khi tin nó.
+
+\textbf{Hướng phát triển.}
+
+\begin{itemize}
+\item Mô phỏng mất gói theo \emph{chùm} (netem \texttt{loss} dạng Gilbert-Elliott)
+      để tiến gần radio thật hơn.
+\item Thêm cơ chế chống lỗi ở tầng RTP: FEC (sửa lỗi tiến) hoặc RTX (truyền lại
+      chọn lọc), rồi đo lại đánh đổi độ trễ.
+\item Giảm \texttt{key-int-max} có điều kiện / bitrate thích ứng để hồi phục
+      nhanh hơn khi link xấu.
+\item Chạy trên Jetson Orin NX thật với bộ mã hoá phần cứng NVENC và đo lại
+      glass-to-glass.
+\item Mở rộng MAVLink: giao thức nhiệm vụ, geofence, trình tự hạ cánh/RTL.
+\end{itemize}
+
+Tóm lại, đây không phải một thử nghiệm chạy một lần, mà là một hệ thống chạy
+được, có dữ liệu, có pipeline, có đo lường độc lập, và còn nhiều hướng để phát
+triển tiếp.
+
+\newpage
+\section{Tài liệu tham khảo}
+\label{section:references}
+\nocite{*}
+\vspace{-3.2em}
+\printbibliography
+
+\newpage
+\begin{appendices}
+\begin{enumerate}
+\item \textbf{AIVIETNAM:} Thông tin về AIVIETNAM có thể đọc thêm tại \href{https://aivietnam.edu.vn/}{đây}.
+\item \textbf{GitHub Repository:} \href{https://github.com/kaisye/drone-video-link}{github.com/kaisye/drone-video-link}.
+\item \textbf{Sổ tay khái niệm:} \texttt{docs/04-CONCEPTS.md} --- giải thích mọi khái niệm từ đầu (nguồn của phần 4 báo cáo này).
+\item \textbf{Số liệu độ trễ:} \texttt{video/results/latency.md} --- bảng đo và cách tái lập.
+\item \textbf{Số liệu mất gói:} \texttt{video/results/packet-loss.md} --- ảnh sạch/vỡ/hồi phục và phương pháp.
+\item \textbf{Demo:} \texttt{docs/assets/demo.mp4} --- 30 giây video nhận được, hỏng giữa chừng rồi hồi phục.
+\end{enumerate}
+\end{appendices}
+
+\end{document}

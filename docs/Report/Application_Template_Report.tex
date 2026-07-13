@@ -1,0 +1,425 @@
+\documentclass[12pt]{ai_conquer2026}
+\addbibresource{references.bib}
+
+\title{%
+  \begin{center}
+        \Large {AI VIET NAM -- AI Conquer 2026}\\[.5ex]  
+        \Huge \textbf{Điền tên project (hướng Đi làm) vào đây}\\[.5ex]
+  \end{center}
+}
+
+% Author --------------------------------------------------------------------
+\posttitle{
+\author{
+\begin{minipage}{\textwidth}
+\centering
+{
+\vspace{-1.5em}
+Tên nhóm / Tên học viên
+}\
+\end{minipage}
+}
+}
+\date{}
+
+% Header --------------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\href{https://www.facebook.com/aivietnam.edu.vn}{\textcolor{aivnGreen}{\bfseries AI VIET NAM (AI Conquer 2026)}}}
+\rhead{\href{https://aivietnam.edu.vn/}{\textcolor{aivnGreen}{\bfseries aivietnam.edu.vn}}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{1.0pt}
+\renewcommand{\headrule}{{\color{aivnGreen}\hrule width\headwidth height\headrulewidth \vskip-\headrulewidth}}
+
+\begin{document}
+\maketitle
+\vspace{-5.5em}
+\setlength{\epigraphwidth}{0.6\textwidth}
+
+\section{Tổng quan báo cáo}
+
+Phần này giới thiệu ngắn gọn toàn bộ project mà nhóm thực hiện. Người viết cần nêu rõ project giải quyết bài toán gì, vì sao bài toán đó cần đến AI, sản phẩm cuối cùng là gì, và hệ thống hoạt động tổng quát như thế nào.
+
+Nội dung nên bao gồm:
+\begin{itemize}
+\item Tên project và mục tiêu chính của project.
+\item Vấn đề thực tế mà project muốn giải quyết.
+\item Lý do sử dụng AI, Machine Learning hoặc Deep Learning cho bài toán này.
+\item Người dùng mục tiêu hoặc bối cảnh sử dụng sản phẩm.
+\item Dữ liệu được sử dụng trong project.
+\item Mô hình hoặc phương pháp chính được áp dụng.
+\item Kết quả nổi bật của mô hình hoặc sản phẩm demo.
+\end{itemize}
+
+Đối với hướng đi làm, phần tổng quan cần cho thấy project không chỉ là một bài thử nghiệm mô hình, mà là một sản phẩm có thể chạy được, có dữ liệu đầu vào, có kết quả đầu ra, có đánh giá mô hình và có demo rõ ràng.
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents
+\thispagestyle{fancy}
+
+\newpage
+\section{Định nghĩa bài toán}
+
+Phần này trình bày rõ bài toán mà nhóm giải quyết. Người viết cần chuyển vấn đề thực tế thành một bài toán kỹ thuật cụ thể để người đọc hiểu hệ thống nhận dữ liệu gì, dự đoán hoặc tạo ra điều gì, và kết quả được đánh giá bằng tiêu chí nào.
+
+Nội dung nên bao gồm:
+
+\begin{itemize}
+\item \textbf{Bối cảnh vấn đề:} Mô tả tình huống thực tế khiến project này cần được xây dựng.
+\item \textbf{Mục tiêu:} Hệ thống cần dự đoán, phân loại, phát hiện, gợi ý, tìm kiếm, sinh nội dung hay trả lời câu hỏi?
+\item \textbf{Đầu vào của hệ thống:} Ví dụ như hình ảnh, văn bản, âm thanh, video, file CSV, tài liệu PDF, câu hỏi của người dùng hoặc dữ liệu cảm biến.
+\item \textbf{Đầu ra mong muốn:} Ví dụ như nhãn dự đoán, xác suất, bounding box, câu trả lời, danh sách gợi ý, văn bản sinh ra, điểm số hoặc biểu đồ phân tích.
+\item \textbf{Loại bài toán AI:} Classification, regression, object detection, segmentation, recommendation, retrieval, text generation, image generation, speech recognition, chatbot hoặc multimodal AI.
+\item \textbf{Tiêu chí thành công:} Mô hình đạt kết quả hợp lý trên tập test, hệ thống inference chạy được, demo thể hiện được luồng xử lý từ input đến output, và kết quả có thể giải thích ở mức cơ bản.
+\end{itemize}
+
+\begin{aivncodebox}[Ví dụ:]
+Nếu project là hệ thống nhận diện bệnh trên lá cây, bài toán có thể được định nghĩa là bài toán image classification, trong đó đầu vào là ảnh lá cây và đầu ra là loại bệnh tương ứng cùng với độ tin cậy của mô hình.
+\end{aivncodebox}
+
+\begin{aivncodebox}[Ví dụ:]
+Nếu project là chatbot hỏi đáp tài liệu, bài toán có thể được định nghĩa là bài toán retrieval-augmented question answering, trong đó đầu vào là câu hỏi của người dùng và đầu ra là câu trả lời dựa trên tài liệu đã cung cấp.
+\end{aivncodebox}
+\section{Dữ liệu sử dụng}
+
+Phần này mô tả dữ liệu được sử dụng để xây dựng, huấn luyện, kiểm thử hoặc vận hành hệ thống. Dữ liệu là một trong những phần quan trọng nhất của project, vì chất lượng dữ liệu ảnh hưởng trực tiếp đến chất lượng mô hình.
+
+Người viết nên trình bày:
+
+\begin{itemize}
+\item \textbf{Nguồn dữ liệu:} Dataset công khai, dữ liệu tự thu thập, dữ liệu mô phỏng, dữ liệu từ người dùng, tài liệu nội bộ hoặc dữ liệu được crawl từ web.
+\item \textbf{Kích thước dữ liệu:} Tổng số mẫu, số lượng class, số lượng file, số lượng ảnh, số lượng dòng dữ liệu, số lượng văn bản hoặc số lượng câu hỏi.
+\item \textbf{Định dạng dữ liệu:} CSV, JSON, image, text, audio, video, PDF hoặc database.
+\item \textbf{Cấu trúc dữ liệu:} Các cột dữ liệu, nhãn, metadata, đặc trưng chính hoặc ví dụ mẫu.
+\item \textbf{Chia dữ liệu:} Train set, validation set và test set được chia như thế nào.
+\item \textbf{Vấn đề dữ liệu:} Missing values, dữ liệu nhiễu, dữ liệu trùng lặp, mất cân bằng class, nhãn sai hoặc dữ liệu không đồng nhất.
+\end{itemize}
+
+Nếu project dùng dataset công khai, cần ghi rõ tên dataset, nguồn tải và cách nhóm sử dụng dataset đó. Nếu project tự thu thập dữ liệu, cần mô tả quy trình thu thập và cách kiểm soát chất lượng dữ liệu.
+
+Nếu được nên có hình ảnh để người đọc hình dung được dữ liệu của bài toán
+
+\begin{aivncodebox}[Ví dụ:]
+Dataset gồm 5,000 ảnh lá cây được chia thành 4 class. Dữ liệu được chia theo tỷ lệ 70\% train, 15\% validation và 15\% test. Trong quá trình khảo sát, nhóm nhận thấy một số ảnh bị mờ, thiếu sáng và có sự mất cân bằng giữa các class.
+\end{aivncodebox}
+
+\section{Tiền xử lý và chuẩn bị dữ liệu}
+
+Phần này trình bày các bước xử lý dữ liệu trước khi đưa vào mô hình. Người viết cần giải thích rõ vì sao các bước tiền xử lý này cần thiết và chúng ảnh hưởng như thế nào đến chất lượng mô hình.
+
+Tùy theo loại dữ liệu, các bước tiền xử lý có thể bao gồm:
+
+\begin{itemize}
+\item \textbf{Với dữ liệu bảng:} Xử lý missing values, loại bỏ dữ liệu trùng, encoding categorical variables, chuẩn hóa numerical features, xử lý outliers và feature engineering.
+\item \textbf{Với dữ liệu hình ảnh:} Resize ảnh, normalize pixel values, data augmentation, loại bỏ ảnh lỗi, chuyển đổi định dạng ảnh.
+\item \textbf{Với dữ liệu văn bản:} Làm sạch văn bản, tách câu, tokenization, lowercasing, loại bỏ ký tự lỗi, embedding hoặc chunking tài liệu.
+\item \textbf{Với dữ liệu âm thanh:} Chuẩn hóa sample rate, loại bỏ nhiễu, cắt đoạn âm thanh, chuyển đổi thành spectrogram hoặc feature phù hợp.
+\item \textbf{Với dữ liệu retrieval / RAG:} Chia nhỏ tài liệu thành chunks, tạo embeddings, lưu vào vector database và kiểm tra chất lượng truy xuất.
+\end{itemize}
+
+Người viết nên nêu rõ đầu ra sau tiền xử lý là gì. Ví dụ, sau tiền xử lý, ảnh được resize về kích thước 224x224, văn bản được chia thành các đoạn nhỏ, hoặc dữ liệu bảng được chuyển thành ma trận đặc trưng để đưa vào mô hình.
+
+Phần này cũng nên mô tả cách nhóm tránh data leakage, tức là không để thông tin từ tập test bị sử dụng trong quá trình huấn luyện hoặc điều chỉnh mô hình.
+
+\section{Phương pháp và mô hình sử dụng}
+
+Phần này mô tả cách tiếp cận chính của project. Người viết cần nêu rõ nhóm sử dụng mô hình nào, vì sao chọn mô hình đó, mô hình được huấn luyện hoặc sử dụng như thế nào, và có baseline nào để so sánh hay không.
+
+Nội dung nên bao gồm:
+
+\begin{itemize}
+\item \textbf{Baseline:} Mô hình hoặc phương pháp đơn giản ban đầu dùng để so sánh.
+\item \textbf{Mô hình chính:} Tên mô hình, kiến trúc hoặc thuật toán nhóm sử dụng.
+\item \textbf{Lý do lựa chọn mô hình:} Phù hợp với loại dữ liệu, dễ triển khai, có pretrained weights, nhẹ, nhanh hoặc cho kết quả tốt.
+\item \textbf{Cách huấn luyện:} Số epoch, batch size, optimizer, learning rate, loss function và các tham số quan trọng.
+\item \textbf{Cách fine-tune hoặc sử dụng pretrained model:} Nếu nhóm dùng mô hình có sẵn, cần nói rõ mô hình được lấy từ đâu và được điều chỉnh như thế nào.
+\item \textbf{Các phương án đã thử:} Nêu các model, cấu hình hoặc pipeline khác mà nhóm đã thử nghiệm.
+\end{itemize}
+
+\begin{aivncodebox}[Ví dụ:]
+Nhóm sử dụng một mô hình CNN pretrained để giải quyết bài toán phân loại ảnh. Baseline ban đầu là Logistic Regression trên đặc trưng đơn giản. Sau đó, nhóm fine-tune mô hình pretrained trên tập train và sử dụng validation set để chọn phiên bản tốt nhất.
+\end{aivncodebox}
+
+Nếu project theo hướng NLP hoặc chatbot, phần này cần mô tả rõ mô hình ngôn ngữ, embedding model, vector database, retrieval method hoặc prompt strategy. Nếu project là computer vision, cần mô tả model backbone, input size, augmentation và metric đánh giá.
+
+\section{Kiến trúc hệ thống}
+
+Phần này mô tả kiến trúc tổng thể của hệ thống ở mức cao. Người viết cần cho thấy hệ thống gồm những thành phần nào và các thành phần đó kết nối với nhau ra sao để tạo thành một sản phẩm hoàn chỉnh.
+
+Một hệ thống thông thường có thể gồm:
+
+\begin{itemize}
+\item \textbf{User Interface / Demo App:} Nơi người dùng nhập dữ liệu, upload file hoặc đặt câu hỏi.
+\item \textbf{Input Validation:} Kiểm tra định dạng, kích thước hoặc tính hợp lệ của dữ liệu đầu vào.
+\item \textbf{Preprocessing Module:} Xử lý dữ liệu đầu vào trước khi đưa vào mô hình.
+\item \textbf{AI Model / Inference Module:} Thành phần chính thực hiện dự đoán, phân loại, truy xuất, tạo nội dung hoặc trả lời câu hỏi.
+\item \textbf{Post-processing Module:} Chuyển đổi kết quả mô hình thành dạng dễ hiểu cho người dùng.
+\item \textbf{Result Display:} Hiển thị kết quả, độ tin cậy, giải thích hoặc gợi ý hành động.
+\item \textbf{Logging / Storage:} Lưu input, output, lỗi hệ thống hoặc lịch sử dự đoán nếu có.
+\end{itemize}
+
+Phần này nên trình bày bằng hình vẽ sử dụng các công cụ như draw.io, Canva, xuất định dạng .pdf để hình ảnh được sắc nét khi phóng to.
+
+Cần thể hiện rõ project không chỉ dừng lại ở training model, mà đã có luồng inference và demo để người dùng có thể tương tác với hệ thống AI.
+
+\section{Luồng huấn luyện và suy luận}
+
+Phần này mô tả hai luồng quan trọng nhất trong project: luồng huấn luyện mô hình và luồng suy luận khi người dùng sử dụng sản phẩm.
+
+\subsection{Luồng huấn luyện}
+
+Luồng huấn luyện mô tả cách nhóm tạo ra mô hình AI từ dữ liệu. Nội dung nên bao gồm:
+
+\begin{enumerate}
+\item Thu thập hoặc chuẩn bị dataset.
+\item Khảo sát và làm sạch dữ liệu.
+\item Chia dữ liệu thành train, validation và test.
+\item Tiền xử lý dữ liệu.
+\item Huấn luyện baseline model.
+\item Huấn luyện hoặc fine-tune mô hình chính.
+\item Đánh giá trên validation set.
+\item Chọn mô hình tốt nhất.
+\item Đánh giá cuối cùng trên test set.
+\item Lưu model checkpoint để sử dụng trong demo.
+\end{enumerate}
+
+\subsection{Luồng suy luận}
+
+Luồng suy luận mô tả cách hệ thống AI hoạt động khi người dùng thật sử dụng sản phẩm. Nội dung nên bao gồm:
+
+\begin{enumerate}
+\item Người dùng nhập dữ liệu hoặc upload file vào demo.
+\item Hệ thống kiểm tra dữ liệu đầu vào.
+\item Dữ liệu được tiền xử lý theo đúng định dạng mà mô hình yêu cầu.
+\item Mô hình AI thực hiện inference.
+\item Kết quả được hậu xử lý.
+\item Hệ thống hiển thị kết quả cho người dùng.
+\item Nếu có lỗi hoặc kết quả không đủ tin cậy, hệ thống đưa ra thông báo phù hợp.
+\end{enumerate}
+
+\begin{aivncodebox}[Ví dụ:]
+Trong giai đoạn inference, người dùng upload một ảnh. Hệ thống resize ảnh về 224x224, normalize ảnh, đưa ảnh vào mô hình CNN, lấy class có xác suất cao nhất và hiển thị tên class cùng confidence score trên giao diện demo.
+\end{aivncodebox}
+
+\section{Công cụ và công nghệ sử dụng}
+
+Phần này liệt kê và giải thích các công cụ, thư viện, framework, nền tảng hoặc dịch vụ được sử dụng trong project AI. Người viết không nên chỉ liệt kê tên công nghệ, mà cần giải thích vai trò của từng công nghệ trong pipeline AI.
+
+Nội dung nên bao gồm:
+
+\begin{itemize}
+\item \textbf{Ngôn ngữ lập trình:} Python là lựa chọn phổ biến cho AI project; có thể kết hợp JavaScript hoặc TypeScript nếu có frontend.
+\item \textbf{Xử lý dữ liệu:} NumPy, Pandas, OpenCV, Pillow, librosa hoặc các thư viện xử lý dữ liệu khác.
+\item \textbf{Machine Learning / Deep Learning:} Scikit-learn, PyTorch, TensorFlow, Keras hoặc Hugging Face Transformers.
+\item \textbf{Model / Pretrained Model:} CNN, ResNet, EfficientNet, YOLO, BERT, CLIP, Sentence Transformers, LLM hoặc các mô hình khác.
+\item \textbf{Vector Database nếu có:} FAISS, ChromaDB, Qdrant hoặc Pinecone cho các bài toán retrieval và RAG.
+\item \textbf{Framework xây dựng demo:} Streamlit, Gradio, Flask, FastAPI, React hoặc Next.js.
+\item \textbf{Quản lý mã nguồn:} Git và GitHub.
+\item \textbf{Quản lý công việc:} Jira, Trello, GitHub Project hoặc AIO Board nếu có.
+\item \textbf{Triển khai demo:} Hugging Face Spaces, Streamlit Cloud, Render, Vercel, Docker hoặc nền tảng cloud khác nếu có.
+\end{itemize}
+
+Với mỗi công nghệ quan trọng, \textbf{mới đối với module}, người viết nên nêu rõ để các team khác có thể nắm được:
+\begin{itemize}
+\item Công nghệ đó được dùng ở phần nào của project.
+\item Vì sao nhóm chọn công nghệ đó.
+\item Công nghệ đó giúp giải quyết vấn đề gì.
+\item Có hạn chế hoặc lưu ý gì khi sử dụng hay không.
+\end{itemize}
+
+
+
+
+\begin{aivncodebox}[Ví dụ:]
+Nhóm sử dụng PyTorch để huấn luyện mô hình vì framework này linh hoạt, phù hợp cho deep learning và dễ tùy chỉnh quá trình training. Streamlit được sử dụng để xây dựng demo vì có thể tạo giao diện nhanh và tích hợp trực tiếp với pipeline inference bằng Python.
+\end{aivncodebox}
+
+\section{Cấu trúc mã nguồn và hướng dẫn chạy}
+
+Phần này mô tả cách tổ chức GitHub repository và hướng dẫn người đọc chạy lại project. Đây là phần thể hiện project có khả năng chạy lại và bàn giao cho người khác.
+
+Người viết nên trình bày cấu trúc thư mục chính của project. Ví dụ:
+
+\newpage
+\begin{aivnoutputbox}[Cấu trúc thư mục tham khảo]
+project-name/
+|-- data/
+|   |-- raw/
+|   |-- processed/
+|
+|-- notebooks/
+|   |-- exploratory_data_analysis.ipynb
+|   |-- model_experiment.ipynb
+|
+|-- src/
+|   |-- preprocessing.py
+|   |-- train.py
+|   |-- inference.py
+|   |-- evaluate.py
+|   |-- utils.py
+|
+|-- models/
+|   |-- best_model.pt
+|
+|-- app/
+|   |-- app.py
+|
+|-- reports/
+|   |-- figures/
+|
+|-- requirements.txt
+|-- README.md
+|-- .gitignore
+
+\end{aivnoutputbox}
+
+Sau đó, giải thích ngắn gọn vai trò của từng thư mục:
+
+\begin{itemize}
+\item \texttt{data/}: chứa dữ liệu thô hoặc dữ liệu đã xử lý.
+\item \texttt{notebooks/}: chứa notebook dùng để khám phá dữ liệu hoặc thử nghiệm mô hình.
+\item \texttt{src/}: chứa source code chính cho preprocessing, training, inference và evaluation.
+\item \texttt{models/}: chứa model checkpoint hoặc model đã huấn luyện.
+\item \texttt{app/}: chứa code chạy demo AI.
+\item \texttt{reports/}: chứa hình ảnh, biểu đồ, kết quả hoặc tài liệu báo cáo.
+\item \texttt{requirements.txt}: liệt kê các thư viện cần cài đặt.
+\item \texttt{README.md}: hướng dẫn tổng quan về project.
+\end{itemize}
+
+Phần hướng dẫn chạy project nên bao gồm các bước cơ bản:
+
+\begin{aivncodebox}[Các câu lệnh hướng dẫn]
+\begin{python}
+git clone https://github.com/username/project-name.git
+cd project-name
+pip install -r requirements.txt
+
+python src/preprocessing.py
+python src/train.py
+python src/evaluate.py
+streamlit run app/app.py
+\end{python}
+\end{aivncodebox}
+
+Nếu project không cần train lại model, người viết cần nói rõ người đọc chỉ cần tải checkpoint và chạy inference hoặc demo. Nếu project cần tải dữ liệu hoặc model checkpoint riêng, cần ghi rõ link tải và vị trí đặt file.
+
+\section{Thực nghiệm và đánh giá mô hình}
+
+Phần này trình bày cách nhóm đánh giá chất lượng của mô hình và sản phẩm demo. Đây là phần quan trọng để chứng minh mô hình không chỉ chạy được, mà còn có kết quả đo lường cụ thể.
+
+Người viết nên trình bày:
+
+\begin{itemize}
+\item Dữ liệu test được sử dụng để đánh giá.
+\item Metric đánh giá phù hợp với loại bài toán.
+\item Baseline model hoặc phương pháp so sánh.
+\item Kết quả của các phiên bản mô hình khác nhau.
+\item Nhận xét về kết quả cuối cùng.
+\end{itemize}
+
+Tùy vào loại bài toán AI, có thể sử dụng các metric sau:
+
+\begin{itemize}
+\item \textbf{Classification:} Accuracy, Precision, Recall, F1-score, Confusion Matrix.
+\item \textbf{Regression:} MAE, MSE, RMSE, R-squared.
+\item \textbf{Object Detection:} IoU, mAP, Precision, Recall.
+\item \textbf{Segmentation:} IoU, Dice Score, Pixel Accuracy.
+\item \textbf{Retrieval / Search:} Precision@K, Recall@K, MRR.
+\item \textbf{Generation / Chatbot:} ROUGE, BLEU, human evaluation, factual correctness hoặc relevance score.
+\item \textbf{Product Demo:} Inference time, success rate, error rate, usability checklist.
+\end{itemize}
+
+Bên cạnh kết quả định lượng, người viết nên có phần nhận xét định tính. Ví dụ, mô hình xử lý tốt loại dữ liệu nào, còn yếu ở tình huống nào, và kết quả hiện tại đã đủ tốt để demo hay chưa.
+
+
+
+\begin{aivncodebox}[Ví dụ:]
+Mô hình cuối cùng đạt accuracy 86\% trên tập test, cao hơn baseline 12\%. Tuy nhiên, confusion matrix cho thấy mô hình vẫn nhầm lẫn giữa hai class có đặc điểm hình ảnh gần giống nhau. Điều này cho thấy nhóm cần bổ sung thêm dữ liệu hoặc cải thiện bước data augmentation.
+\end{aivncodebox}
+
+\section{Phân tích lỗi và hạn chế}
+
+Phần này giúp báo cáo có chiều sâu hơn. Một technical report AI chuyên nghiệp không chỉ nêu kết quả tốt, mà còn cần phân tích các lỗi, hạn chế và nguyên nhân khiến mô hình chưa hoạt động như mong muốn.
+
+Người viết nên trình bày:
+
+\begin{itemize}
+\item Những trường hợp mô hình dự đoán đúng hoặc xử lý tốt.
+\item Những trường hợp mô hình dự đoán sai hoặc chưa ổn định.
+\item Các class hoặc loại input mà mô hình thường nhầm lẫn.
+\item Nguyên nhân có thể dẫn đến lỗi.
+\item Hạn chế về dữ liệu, mô hình, quá trình huấn luyện, inference hoặc demo.
+\item Những cải tiến có thể thực hiện nếu có thêm thời gian.
+\end{itemize}
+
+
+
+\begin{aivncodebox}[Ví dụ:]
+Mô hình hoạt động tốt với ảnh rõ nét và ánh sáng đầy đủ, nhưng kết quả giảm khi ảnh bị mờ, thiếu sáng hoặc có nhiều vật thể gây nhiễu. Nguyên nhân có thể đến từ việc dữ liệu huấn luyện chưa đủ đa dạng và pipeline tiền xử lý chưa xử lý tốt các trường hợp ảnh chất lượng thấp.
+\end{aivncodebox}
+
+\newpage
+
+\begin{aivncodebox}[Ví dụ:]
+Nếu project là chatbot hoặc RAG, phần phân tích lỗi có thể tập trung vào:
+\begin{itemize}
+\item Truy xuất sai tài liệu.
+\item Câu trả lời thiếu thông tin.
+\item Câu trả lời đúng một phần nhưng diễn đạt chưa rõ.
+\item Model trả lời ngoài phạm vi dữ liệu.
+\item Chunking hoặc embedding chưa tối ưu.
+\end{itemize}
+\end{aivncodebox}
+
+Phần này cho thấy nhóm không chỉ chạy được mô hình, mà còn hiểu điểm mạnh, điểm yếu và giới hạn hiện tại của hệ thống .
+
+\section{Kết luận và hướng phát triển}
+
+Phần này tổng kết lại toàn bộ project. Người viết nên nhắc lại bài toán ban đầu, mô hình hoặc phương pháp đã sử dụng, sản phẩm demo đã xây dựng, kết quả đạt được và những điểm có thể phát triển trong tương lai.
+
+Nội dung kết luận nên trả lời các câu hỏi:
+
+\begin{itemize}
+\item Project đã giải quyết bài toán gì?
+\item Dữ liệu và mô hình chính được sử dụng là gì?
+\item Hệ thống hoạt động theo luồng nào?
+\item Kết quả đánh giá mô hình đạt được là gì?
+\item Demo cuối cùng có thể làm được những chức năng nào?
+\item Nhóm đã học được gì sau quá trình thực hiện project?
+\end{itemize}
+
+Phần hướng phát triển nên nêu các cải tiến cụ thể, ví dụ:
+
+\begin{itemize}
+\item Thu thập thêm dữ liệu để cải thiện chất lượng mô hình.
+\item Cải thiện data preprocessing hoặc data augmentation.
+\item Thử nghiệm mô hình mạnh hơn hoặc fine-tune tốt hơn.
+\item Tối ưu inference speed để hệ thống phản hồi nhanh hơn.
+\item Cải thiện giao diện demo để người dùng dễ sử dụng hơn.
+\item Thêm cơ chế giải thích kết quả mô hình.
+
+\end{itemize}
+
+Kết luận nên nhấn mạnh rằng project không chỉ là một thử nghiệm mô hình, mà là một sản phẩm demo có thể chạy được, có dữ liệu, có pipeline, có đánh giá và có khả năng tiếp tục phát triển.
+
+\newpage
+\section{Tài liệu tham khảo}
+\label{section:references}
+\nocite{*}
+\vspace{-3.2em}
+\printbibliography
+
+\newpage
+\begin{appendices}
+\begin{enumerate}
+\item \textbf{AIVIETNAM:} Thông tin về AIVIETNAM có thể đọc thêm tại \href{https://aivietnam.edu.vn/}{đây}.
+\item \textbf{GitHub Repository:} Nhóm điền link GitHub repository của project tại đây.
+\item \textbf{Demo Video:} Nhóm điền link video demo tại đây.
+\item \textbf{Demo App / Website:} Nhóm điền link demo app hoặc website tại đây nếu có.
+\item \textbf{Dataset:} Nhóm điền link dataset hoặc mô tả nguồn dữ liệu tại đây nếu có.
+\item \textbf{Model Checkpoint:} Nhóm điền link model checkpoint tại đây nếu có.
+\end{enumerate}
+\end{appendices}
+
+\end{document}
