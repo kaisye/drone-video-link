@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Link — Live Dashboard</title>
+<style>
+  :root {
+    --video: #d97706;  --video-soft: #fbbf24;
+    --mav:   #2563eb;  --mav-soft:   #60a5fa;
+    --ok: #16a34a;  --warn: #d97706;  --bad: #dc2626;
+    --bg: #eef0f3;  --panel: #ffffff;  --panel-2: #f7f8fa;
+    --ink: #17202e;  --muted: #5c6674;  --line: #e0e4ea;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --sky-1: #4a90d9;  --sky-2: #7db4e6;  --gnd-1: #7a5230;  --gnd-2: #a97748;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --video: #f59e0b;  --video-soft: #fbbf24;
+      --mav:   #3b82f6;  --mav-soft:   #7dabf8;
+      --ok: #22c55e;  --warn: #f59e0b;  --bad: #ef4444;
+      --bg: #0a0e13;  --panel: #121821;  --panel-2: #0e141c;
+      --ink: #e6ecf3;  --muted: #8a94a3;  --line: #1e2732;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+      --sky-1: #23517f;  --sky-2: #2f6ca6;  --gnd-1: #5a3d22;  --gnd-2: #7a5734;
+    }
+  }
+  :root[data-theme="light"] {
+    --video: #d97706; --mav: #2563eb; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --bg:#eef0f3; --panel:#fff; --panel-2:#f7f8fa; --ink:#17202e; --muted:#5c6674; --line:#e0e4ea;
+    --sky-1:#4a90d9; --sky-2:#7db4e6; --gnd-1:#7a5230; --gnd-2:#a97748;
+  }
+  :root[data-theme="dark"] {
+    --video:#f59e0b; --mav:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    --bg:#0a0e13; --panel:#121821; --panel-2:#0e141c; --ink:#e6ecf3; --muted:#8a94a3; --line:#1e2732;
+    --sky-1:#23517f; --sky-2:#2f6ca6; --gnd-1:#5a3d22; --gnd-2:#7a5734;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--sans); background: var(--bg); color: var(--ink);
+    -webkit-font-smoothing: antialiased; line-height: 1.4;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 18px 20px 40px; }
+
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 16px;
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  header h1 .dim { color: var(--muted); font-weight: 500; }
+  .spacer { flex: 1 1 auto; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  .dotc { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .conn { display: inline-flex; align-items: center; gap: 7px; font-size: 12px;
+          font-family: var(--mono); color: var(--muted); }
+  .conn .dotc { background: var(--muted); }
+  .conn.up .dotc { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .conn.down .dotc { background: var(--bad); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .card > .hd {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line);
+  }
+  .card > .hd .tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .8px;
+    text-transform: uppercase; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  }
+  .tag.video { color: var(--video); background: color-mix(in srgb, var(--video) 14%, transparent); }
+  .tag.mav   { color: var(--mav);   background: color-mix(in srgb, var(--mav) 14%, transparent); }
+  .card > .hd h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  .card > .hd .sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .card .bd { padding: 16px; }
+
+  .pill {
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;
+    text-transform: uppercase;
+  }
+  .pill .dotc { width: 7px; height: 7px; }
+  .pill.live { color: var(--ok);  background: color-mix(in srgb, var(--ok) 15%, transparent); }
+  .pill.live .dotc { background: var(--ok); }
+  .pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .pill.warn .dotc { background: var(--warn); }
+  .pill.bad  { color: var(--bad);  background: color-mix(in srgb, var(--bad) 15%, transparent); }
+  .pill.bad .dotc { background: var(--bad); }
+
+  /* ---- VIDEO panel ---- */
+  /* the monitor is the hero: as a plain block child of .bd it spans the whole
+     Video card, and aspect-ratio:16/9 sets its height from that full width, so a
+     16:9 feed fills it edge-to-edge with no crop. The fps number, sparkline and
+     resolution sit in a strip beneath it, counters below that. */
+  .vid-stats {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 14px;
+    align-items: center; margin-top: 14px;
+  }
+  .vid-stats .spark { margin-top: 0; }
+  .vid-stats .res { min-width: 120px; }
+  @media (max-width: 520px){ .vid-stats { grid-template-columns: 1fr; } }
+  .bignum { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .bignum .n { font-size: 46px; font-weight: 700; line-height: 1; }
+  .bignum .u { font-size: 13px; color: var(--muted); margin-left: 4px; }
+  .bignum .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 6px; }
+  .spark { width: 100%; height: 54px; display: block; margin-top: 8px; }
+
+  .monitor {
+    position: relative; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 3px),
+      linear-gradient(135deg, #14324d, #0c1f30);
+    border: 1px solid var(--line);
+  }
+  .monitor .feed {
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    display:none; background:#0a141e;
+  }
+  .monitor.live .feed { display:block; }
+  .monitor .grid-tp {
+    position:absolute; inset:0; opacity:.5;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 26px, rgba(255,255,255,.10) 26px 27px),
+      repeating-linear-gradient(0deg, transparent 0 26px, rgba(255,255,255,.10) 26px 27px);
+  }
+  /* once a real picture is up, drop the placeholder grid; the sweep/glitch
+     stay as an overlay on top of the live frame */
+  .monitor.live .grid-tp { display:none; }
+  .monitor .sweep { position:absolute; left:0; right:0; height:34%;
+    background: linear-gradient(180deg, transparent, rgba(120,200,255,.14), transparent);
+    animation: sweep 3.2s linear infinite; }
+  @keyframes sweep { from{ top:-34%; } to{ top:100%; } }
+  .monitor .glitch { position:absolute; left:0; right:0; height:9px; opacity:0;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.6) 0 6px, rgba(0,0,0,.5) 6px 12px);
+    mix-blend-mode: screen; }
+  .monitor .stamp { position:absolute; left:10px; bottom:8px; font-family:var(--mono);
+    font-size:11px; color:rgba(255,255,255,.7); letter-spacing:.5px; }
+  .monitor .noSignal { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(6,10,14,.72); color:#fff; font-family:var(--mono); font-size:13px; letter-spacing:2px; }
+  .monitor.degraded .glitch { opacity:1; animation: glitchmove .35s steps(3) infinite; }
+  .monitor.degraded .grid-tp { filter: hue-rotate(20deg) contrast(1.3); }
+  @keyframes glitchmove {
+    0%{ top: 18%; } 33%{ top: 55%; } 66%{ top: 33%; } 100%{ top: 72%; }
+  }
+  .monitor.lost .sweep, .monitor.lost .glitch { display:none; }
+  .monitor.lost { filter: grayscale(1) brightness(.6); }
+  .monitor.lost .noSignal { display:flex; }
+
+  .counters { display:grid; grid-template-columns: repeat(3,1fr); gap:10px; margin-top:14px; }
+  .counter { background: var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .counter .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight:700; }
+  .counter .k { font-size:11px; color: var(--muted); text-transform: uppercase; letter-spacing:.6px; margin-top:2px; }
+  .counter.hot .v { color: var(--bad); }
+
+  /* ---- MAV panel ---- */
+  .mav-top { display:grid; grid-template-columns: auto 1fr; gap:16px; align-items:center; }
+  @media (max-width: 520px){ .mav-top { grid-template-columns: 1fr; justify-items:center; } }
+  #adi { width: 210px; height: 210px; display:block; }
+  .instruments { display:grid; grid-template-columns: 1fr 1fr; gap:10px; width:100%; }
+  .inst { background: var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .inst .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
+  .inst .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size:20px; font-weight:700; margin-top:3px; }
+  .inst .v small { font-size:12px; color:var(--muted); font-weight:500; }
+  .batt { grid-column: 1 / -1; }
+  .battbar { height:8px; border-radius:999px; background: var(--line); margin-top:8px; overflow:hidden; }
+  .battbar > span { display:block; height:100%; border-radius:999px; background: linear-gradient(90deg, var(--ok), #a3e635); transition: width .4s ease, background .4s; }
+  .statusrow { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+
+  .log { margin-top:16px; }
+  .log .hd2 { font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); margin-bottom:8px; }
+  #events { list-style:none; margin:0; padding:0; font-family:var(--mono); font-size:12px; max-height:150px; overflow-y:auto; }
+  #events li { padding:5px 0; border-bottom:1px dashed var(--line); display:flex; gap:10px; color:var(--muted); }
+  #events li .ts { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+  #events li b { color: var(--ink); font-weight:600; }
+  #events li.v b { color: var(--video); }
+  #events li.m b { color: var(--mav); }
+
+  footer { margin-top: 22px; font-size: 12px; color: var(--muted); text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Drone Link <span class="dim">· bảng điều khiển trực tiếp</span></h1>
+    <div class="spacer"></div>
+    <div class="legend">
+      <span class="k"><i class="dotc" style="background:var(--video)"></i>Video</span>
+      <span class="k"><i class="dotc" style="background:var(--mav)"></i>MAVLink</span>
+    </div>
+    <div id="conn" class="conn down"><i class="dotc"></i><span id="conntxt">đang kết nối…</span></div>
+  </header>
+
+  <div class="grid">
+    <!-- ============ VIDEO ============ -->
+    <section class="card">
+      <div class="hd">
+        <span class="tag video">Video</span>
+        <h2>Đường truyền hình ảnh</h2>
+        <div class="spacer"></div>
+        <span id="vpill" class="pill warn"><i class="dotc"></i>chờ</span>
+      </div>
+      <div class="bd">
+        <div class="monitor" id="monitor">
+          <img class="feed" id="feed" alt="">
+          <div class="grid-tp"></div>
+          <div class="sweep"></div>
+          <div class="glitch"></div>
+          <div class="stamp" id="mstamp">RX ·</div>
+          <div class="noSignal">NO SIGNAL</div>
+        </div>
+        <div class="vid-stats">
+          <div class="bignum">
+            <div class="lbl">Khung hình / giây</div>
+            <span class="n" id="fps">--</span><span class="u">fps</span>
+          </div>
+          <canvas class="spark" id="spark" width="320" height="54"></canvas>
+          <div class="inst res">
+            <div class="k">Độ phân giải</div>
+            <div class="v" id="res">-- × --</div>
+          </div>
+        </div>
+        <div class="counters">
+          <div class="counter"><div class="v" id="frames">0</div><div class="k">Tổng khung</div></div>
+          <div class="counter" id="cLost"><div class="v" id="jblost">0</div><div class="k">Gói mất · RTP</div></div>
+          <div class="counter" id="cCorr"><div class="v" id="corrupt">0</div><div class="k">Khung hư · che giấu</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MAVLINK ============ -->
+    <section class="card">
+      <div class="hd">
+        <span class="tag mav">MAVLink</span>
+        <h2>Trạng thái bay</h2>
+        <div class="spacer"></div>
+        <span id="mpill" class="pill warn"><i class="dotc"></i>chờ</span>
+      </div>
+      <div class="bd">
+        <div class="mav-top">
+          <svg id="adi" viewBox="0 0 200 200" aria-label="artificial horizon">
+            <defs>
+              <clipPath id="adiClip"><circle cx="100" cy="100" r="84"/></clipPath>
+              <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color:var(--sky-1)"/>
+                <stop offset="1" style="stop-color:var(--sky-2)"/>
+              </linearGradient>
+              <linearGradient id="gndGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color:var(--gnd-2)"/>
+                <stop offset="1" style="stop-color:var(--gnd-1)"/>
+              </linearGradient>
+            </defs>
+            <g clip-path="url(#adiClip)">
+              <g id="horizon">
+                <rect x="-160" y="-280" width="520" height="380" style="fill:url(#skyGrad)"/>
+                <rect x="-160" y="100" width="520" height="380" style="fill:url(#gndGrad)"/>
+                <line x1="-160" y1="100" x2="360" y2="100" stroke="#fff" stroke-width="2.2"/>
+                <g id="ladder" stroke="#fff" stroke-width="1.4" fill="#fff"
+                   font-family="monospace" font-size="8"></g>
+              </g>
+            </g>
+            <!-- fixed case overlay -->
+            <g id="rollpointer">
+              <polygon points="100,20 95,30 105,30" fill="var(--ink)"/>
+            </g>
+            <g fill="none" stroke="var(--ink)" stroke-width="1">
+              <path d="M100 20 A80 80 0 0 1 132 27" opacity=".35"/>
+              <path d="M100 20 A80 80 0 0 0 68 27" opacity=".35"/>
+            </g>
+            <!-- aircraft symbol (fixed) -->
+            <g stroke="var(--video)" stroke-width="3.4" fill="none" stroke-linecap="round">
+              <line x1="60" y1="100" x2="86" y2="100"/>
+              <line x1="114" y1="100" x2="140" y2="100"/>
+            </g>
+            <circle cx="100" cy="100" r="3.2" fill="var(--video)"/>
+            <circle cx="100" cy="100" r="84" fill="none" stroke="var(--line)" stroke-width="6"/>
+            <circle cx="100" cy="100" r="87" fill="none" stroke="var(--panel)" stroke-width="4"/>
+          </svg>
+
+          <div class="instruments">
+            <div class="inst"><div class="k">Độ cao (AGL)</div><div class="v"><span id="alt">0.0</span> <small>m</small></div></div>
+            <div class="inst"><div class="k">Hướng (yaw)</div><div class="v"><span id="hdg">0</span> <small>°</small></div></div>
+            <div class="inst"><div class="k">Nghiêng · Chúc</div><div class="v"><span id="rp">0 · 0</span> <small>°</small></div></div>
+            <div class="inst"><div class="k">Chế độ bay</div><div class="v" id="mode" style="font-size:16px">--</div></div>
+            <div class="inst batt">
+              <div class="k">Pin</div>
+              <div class="v"><span id="batv">--</span> <small>V</small> &nbsp; <span id="batp" style="color:var(--muted);font-size:15px">-- %</span></div>
+              <div class="battbar"><span id="battfill" style="width:0%"></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="statusrow">
+          <span id="armpill" class="pill warn"><i class="dotc"></i>DISARMED</span>
+          <span id="linkpill" class="pill bad"><i class="dotc"></i>LINK ?</span>
+          <span class="pill" style="color:var(--muted);background:var(--panel-2)"><span id="gps">-- , --</span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ EVENT LOG ============ -->
+  <div class="card log" style="margin-top:16px">
+    <div class="bd">
+      <div class="hd2">Nhật ký sự kiện</div>
+      <ul id="events"></ul>
+    </div>
+  </div>
+
+  <footer>
+    Dữ liệu đẩy realtime qua Server-Sent Events · cùng mã màu với trang sơ đồ giải thích.
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+// ---- build the pitch ladder once ----
+(function buildLadder(){
+  const g = $("ladder"); const K = 2.2; // px per degree
+  let html = "";
+  for (let d = -30; d <= 30; d += 10) {
+    if (d === 0) continue;
+    const y = 100 - d * K;
+    const w = (d % 20 === 0) ? 34 : 20;
+    html += `<line x1="${100-w/2}" y1="${y}" x2="${100+w/2}" y2="${y}"/>`;
+    if (d % 20 === 0) {
+      html += `<text x="${100-w/2-4}" y="${y+3}" text-anchor="end">${Math.abs(d)}</text>`;
+      html += `<text x="${100+w/2+4}" y="${y+3}" text-anchor="start">${Math.abs(d)}</text>`;
+    }
+  }
+  g.innerHTML = html;
+})();
+
+// ---- state ----
+const target = { roll:0, pitch:0, yaw:0, alt:0 };
+const disp   = { roll:0, pitch:0, yaw:0, alt:0 };
+const link   = { video:"?", mav:"?" };
+let lastVideoAt = 0, lastMavAt = 0;
+let lastLost = 0, lossBumpAt = 0;
+let prevArmed = null, prevMode = null, prevVState = null, prevMState = null;
+const fpsHist = [];
+
+// ---- SSE ----
+const es = new EventSource("/events");
+es.onopen  = () => setConn(true);
+es.onerror = () => setConn(false);
+es.onmessage = (e) => { try { route(JSON.parse(e.data)); } catch(_){} };
+
+function setConn(up){
+  const c = $("conn");
+  c.className = "conn " + (up ? "up" : "down");
+  $("conntxt").textContent = up ? "đã kết nối" : "mất kết nối…";
+}
+
+function route(ev){
+  if (ev.kind === "mav")   onMav(ev);
+  else if (ev.kind === "video") onVideo(ev);
+  else if (ev.kind === "link")  onLink(ev);
+}
+
+// ---- MAVLink ----
+function onMav(ev){
+  lastMavAt = performance.now();
+  if (typeof ev.roll_deg  === "number") target.roll  = ev.roll_deg;
+  if (typeof ev.pitch_deg === "number") target.pitch = ev.pitch_deg;
+  if (typeof ev.yaw_deg   === "number") target.yaw   = ev.yaw_deg;
+  if (typeof ev.rel_alt_m === "number") target.alt   = ev.rel_alt_m;
+
+  if (ev.flight_mode) $("mode").textContent = ev.flight_mode;
+  if (typeof ev.heading_deg === "number") $("hdg").textContent = Math.round(ev.heading_deg);
+  if (typeof ev.rel_alt_m === "number") $("alt").textContent = ev.rel_alt_m.toFixed(1);
+  if (typeof ev.roll_deg === "number" && typeof ev.pitch_deg === "number")
+    $("rp").textContent = `${ev.roll_deg.toFixed(0)} · ${ev.pitch_deg.toFixed(0)}`;
+
+  if (typeof ev.battery_v === "number"){
+    $("batv").textContent = ev.battery_v.toFixed(1);
+    // map 10.5–12.6 V to 0–100% of the bar for a rough visual
+    const pct = ev.battery_pct != null ? ev.battery_pct
+              : Math.max(0, Math.min(100, (ev.battery_v-10.5)/(12.6-10.5)*100));
+    $("batp").textContent = (ev.battery_pct != null ? Math.round(ev.battery_pct) : Math.round(pct)) + " %";
+    const fill = $("battfill");
+    fill.style.width = pct + "%";
+    fill.style.background = pct > 40 ? "linear-gradient(90deg,var(--ok),#a3e635)"
+                        : pct > 18 ? "linear-gradient(90deg,var(--warn),#facc15)"
+                        : "linear-gradient(90deg,var(--bad),#f87171)";
+  }
+  if (typeof ev.lat_deg === "number" && typeof ev.lon_deg === "number")
+    $("gps").textContent = `${ev.lat_deg.toFixed(5)}, ${ev.lon_deg.toFixed(5)}`;
+
+  // arm / mode change events
+  const armed = !!ev.armed;
+  if (prevArmed !== null && armed !== prevArmed)
+    logEvent("m", armed ? "ARMED" : "DISARMED", "trạng thái động cơ");
+  prevArmed = armed;
+  const ap = $("armpill");
+  ap.className = "pill " + (armed ? "live" : "warn");
+  ap.innerHTML = `<i class="dotc"></i>${armed ? "ARMED" : "DISARMED"}`;
+
+  if (ev.flight_mode && prevMode !== null && ev.flight_mode !== prevMode)
+    logEvent("m", ev.flight_mode, "đổi chế độ bay");
+  if (ev.flight_mode) prevMode = ev.flight_mode;
+}
+
+// ---- Video ----
+function onVideo(ev){
+  lastVideoAt = performance.now();
+  if (typeof ev.fps === "number"){
+    $("fps").textContent = ev.fps;
+    fpsHist.push(ev.fps); if (fpsHist.length > 120) fpsHist.shift();
+    drawSpark();
+  }
+  if (typeof ev.frames === "number") $("frames").textContent = ev.frames.toLocaleString();
+  if (typeof ev.jb_lost === "number"){
+    $("jblost").textContent = ev.jb_lost.toLocaleString();
+    $("cLost").classList.toggle("hot", ev.jb_lost > 0);
+    if (ev.jb_lost > lastLost){
+      const now = performance.now();
+      if (now - lossBumpAt > 3500) logEvent("v", "PACKET LOSS", "jitterbuffer báo mất gói RTP");
+      lossBumpAt = now;
+    }
+    lastLost = ev.jb_lost;
+  }
+  if (typeof ev.corrupt === "number"){
+    $("corrupt").textContent = ev.corrupt;
+    $("cCorr").classList.toggle("hot", ev.corrupt > 0);
+  }
+  if (ev.w && ev.h) $("res").textContent = `${ev.w} × ${ev.h}`;
+  $("mstamp").textContent = "RX · " + (ev.w && ev.h ? `${ev.w}×${ev.h}` : "live");
+}
+
+function onLink(ev){
+  link[ev.channel] = ev.state;
+  if (ev.channel === "mav" && ev.state !== prevMState){
+    if (ev.state === "lost") logEvent("m", "LINK LOST", `mất heartbeat ${ev.gap||""}s`);
+    else if (prevMState) logEvent("m", "LINK RESTORED", "heartbeat trở lại");
+    prevMState = ev.state;
+  }
+  if (ev.channel === "video" && ev.state !== prevVState){
+    if (ev.state === "lost") logEvent("v", "VIDEO LOST", "không còn khung hình");
+    prevVState = ev.state;
+  }
+}
+
+// ---- animation loop: ease instruments, recompute health ----
+const K = 2.2;
+function tick(){
+  disp.roll  += (target.roll  - disp.roll ) * 0.18;
+  disp.pitch += (target.pitch - disp.pitch) * 0.18;
+  disp.alt   += (target.alt   - disp.alt  ) * 0.12;
+  // yaw wraps; ease along shortest arc
+  let dy = ((target.yaw - disp.yaw + 540) % 360) - 180;
+  disp.yaw = (disp.yaw + dy * 0.15 + 360) % 360;
+
+  $("horizon").setAttribute("transform",
+    `rotate(${-disp.roll} 100 100) translate(0 ${disp.pitch*K})`);
+  $("rollpointer").setAttribute("transform", `rotate(${disp.roll} 100 100)`);
+
+  const now = performance.now();
+  // video health
+  let vh;
+  if (link.video === "lost" || (lastVideoAt && now - lastVideoAt > 3500)) vh = "lost";
+  else if (lossBumpAt && now - lossBumpAt < 1600) vh = "degraded";
+  else if (!lastVideoAt) vh = "wait";
+  else vh = "live";
+  setMonitor(vh);
+
+  // mav health
+  let mh;
+  if (link.mav === "lost" || (lastMavAt && now - lastMavAt > 3500)) mh = "lost";
+  else if (!lastMavAt) mh = "wait";
+  else mh = "live";
+  setPill("mpill", mh, {live:"LINK UP", degraded:"", lost:"LINK LOST", wait:"chờ"});
+  const lp = $("linkpill");
+  if (mh === "live"){ lp.className = "pill live"; lp.innerHTML = `<i class="dotc"></i>LINK UP`; }
+  else if (mh === "lost"){ lp.className = "pill bad"; lp.innerHTML = `<i class="dotc"></i>LINK LOST`; }
+  else { lp.className = "pill warn"; lp.innerHTML = `<i class="dotc"></i>LINK ?`; }
+
+  requestAnimationFrame(tick);
+}
+
+function setMonitor(state){
+  const m = $("monitor");
+  m.classList.toggle("degraded", state === "degraded");
+  m.classList.toggle("lost", state === "lost");
+  setPill("vpill", state, {live:"LIVE", degraded:"DEGRADED", lost:"NO SIGNAL", wait:"chờ"});
+}
+function setPill(id, state, labels){
+  const el = $(id); const cls = state === "live" ? "live" : state === "degraded" ? "warn"
+           : state === "lost" ? "bad" : "warn";
+  el.className = "pill " + cls;
+  el.innerHTML = `<i class="dotc"></i>${labels[state] || ""}`;
+}
+
+// ---- fps sparkline ----
+function drawSpark(){
+  const cv = $("spark"); const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height; ctx.clearRect(0,0,W,H);
+  if (fpsHist.length < 2) return;
+  const max = 35, min = 0;
+  const css = getComputedStyle(document.documentElement);
+  const col = css.getPropertyValue("--video").trim() || "#f59e0b";
+  ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.beginPath();
+  fpsHist.forEach((v,i)=>{
+    const x = i/(fpsHist.length-1)*W;
+    const y = H - (Math.max(min,Math.min(max,v))-min)/(max-min)*(H-6) - 3;
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.stroke();
+  // soft fill
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+  ctx.globalAlpha = .12; ctx.fillStyle = col; ctx.fill(); ctx.globalAlpha = 1;
+}
+
+// ---- event log ----
+function logEvent(kind, title, detail){
+  const ul = $("events");
+  const li = document.createElement("li");
+  li.className = kind; // v / m
+  const ts = new Date().toLocaleTimeString("vi-VN", {hour12:false});
+  li.innerHTML = `<span class="ts">${ts}</span><b>${title}</b><span>${detail||""}</span>`;
+  ul.insertBefore(li, ul.firstChild);
+  while (ul.children.length > 12) ul.removeChild(ul.lastChild);
+}
+
+// ---- live video feed (MJPEG over HTTP into an <img>) ----
+// The server carves JPEG frames out of a GStreamer pipeline and streams them as
+// multipart/x-mixed-replace. When frames arrive the monitor switches to .live
+// and the placeholder grid drops away; the sweep/glitch overlays keep working on
+// top of the real picture. If the source is absent (503) or the stream drops,
+// we fall back to the decorative placeholder and retry.
+(function feed(){
+  const img = $("feed"), mon = $("monitor");
+  let retry = null;
+  function connect(){
+    clearTimeout(retry);
+    img.src = "/video.mjpeg?t=" + Date.now();   // cache-buster forces a fresh stream
+  }
+  img.onload = () => { mon.classList.add("live"); };   // first (and each) frame decoded
+  img.onerror = () => {
+    mon.classList.remove("live");                       // show placeholder again
+    retry = setTimeout(connect, 2500);
+  };
+  connect();
+})();
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

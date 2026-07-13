@@ -4,6 +4,10 @@ A ground-station link prototype for a drone camera payload: **low-latency H.264 
 
 Developed against the software stack used on Jetson Xavier/Orin NX companion computers, but runnable entirely on a laptop — video source is simulated with `videotestsrc`, the flight controller with ArduPilot SITL. No drone required.
 
+![Live ground-station dashboard: the H.264 video downlink on the left, MAVLink flight telemetry on the right — amber for video, blue for MAVLink](docs/demo.png)
+
+> The [live dashboard](dashboard/) streams both channels to the browser over Server-Sent Events. Above is the synthetic walk-through (`python dashboard/server.py --synthetic`); the same page renders the real receiver and SITL telemetry when they are running.
+
 ---
 
 ## System
