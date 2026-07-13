@@ -46,10 +46,29 @@ struct Stats {
 };
 
 struct Context {
-    Options   opts;
-    Stats     stats;
-    GMainLoop *loop = nullptr;
+    Options    opts;
+    Stats      stats;
+    GMainLoop *loop     = nullptr;
+    GstElement *pipeline = nullptr;  // borrowed, for live jitterbuffer stats
 };
+
+// num-lost from the jitterbuffer -- the only counter that tracks loss while the
+// decoder conceals it in silence (DISCONT/CORRUPTED stay clear up to ~20% loss,
+// see results/packet-loss.md). Read live each tick so a dashboard can watch it.
+guint64 read_jb_lost(GstElement *pipeline) {
+    if (!pipeline) return 0;
+    GstElement *jb = gst_bin_get_by_name(GST_BIN(pipeline), "jbuf");
+    if (!jb) return 0;
+    GstStructure *s = nullptr;
+    g_object_get(jb, "stats", &s, nullptr);
+    guint64 lost = 0;
+    if (s) {
+        gst_structure_get_uint64(s, "num-lost", &lost);
+        gst_structure_free(s);
+    }
+    gst_object_unref(jb);
+    return lost;
+}
 
 void read_caps_once(Context *ctx, GstSample *sample) {
     if (ctx->stats.width != 0) return;
@@ -134,9 +153,10 @@ gboolean on_stats_tick(gpointer user_data) {
 
     g_print("[stats] frames=%" G_GUINT64_FORMAT "  fps=%" G_GUINT64_FORMAT
             "  avg=%.2f  discont=%" G_GUINT64_FORMAT "  corrupt=%" G_GUINT64_FORMAT
-            "  last_pts=%" GST_TIME_FORMAT "\n",
+            "  lost=%" G_GUINT64_FORMAT "  last_pts=%" GST_TIME_FORMAT "\n",
             total, delta, avg_fps, ctx->stats.discontinuities.load(),
-            ctx->stats.corrupted.load(), GST_TIME_ARGS(ctx->stats.last_pts));
+            ctx->stats.corrupted.load(), read_jb_lost(ctx->pipeline),
+            GST_TIME_ARGS(ctx->stats.last_pts));
 
     return G_SOURCE_CONTINUE;
 }
@@ -277,6 +297,8 @@ int main(int argc, char **argv) {
         g_clear_error(&err);
         return 1;
     }
+
+    ctx.pipeline = pipeline;
 
     GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "sink");
     GstAppSinkCallbacks callbacks = {};
